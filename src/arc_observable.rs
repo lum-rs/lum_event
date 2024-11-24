@@ -27,10 +27,7 @@ impl<T> ArcObservable<T>
 where
     T: Send + Hash,
 {
-    pub fn new<STRING>(value: T, event_name: STRING) -> Self
-    where
-        STRING: Into<String>,
-    {
+    pub fn new<IntoString: Into<String>>(value: T, event_name: IntoString) -> Self {
         Self {
             value: Arc::new(Mutex::new(value)),
             on_change: Event::new(event_name),

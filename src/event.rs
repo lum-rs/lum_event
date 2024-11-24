@@ -29,10 +29,7 @@ impl<T> Event<T>
 where
     T: Clone + Send,
 {
-    pub fn new<STRING>(name: STRING) -> Self
-    where
-        STRING: Into<String>,
-    {
+    pub fn new<IntoString: Into<String>>(name: IntoString) -> Self {
         Self {
             name: name.into(),
             uuid: Uuid::new_v4(),
@@ -44,16 +41,13 @@ where
         self.subscribers.len()
     }
 
-    pub fn subscribe_channel<STRING>(
+    pub fn subscribe_channel<IntoString: Into<String>>(
         &mut self,
-        name: STRING,
+        name: IntoString,
         buffer: usize,
         log_on_error: bool,
         remove_on_error: bool,
-    ) -> (Uuid, Receiver<T>)
-    where
-        STRING: Into<String>,
-    {
+    ) -> (Uuid, Receiver<T>) {
         let (sender, receiver) = channel(buffer);
         let subscriber = Subscriber::new(
             name,
@@ -68,16 +62,15 @@ where
         (uuid, receiver)
     }
 
-    pub fn subscribe_async_closure<STRING, CLOSURE>(
+    pub fn subscribe_async_closure<IntoString: Into<String>, ClosureFn>(
         &mut self,
-        name: STRING,
-        closure: CLOSURE,
+        name: IntoString,
+        closure: ClosureFn,
         log_on_error: bool,
         remove_on_error: bool,
     ) -> Uuid
     where
-        STRING: Into<String>,
-        CLOSURE: Fn(T) -> PinnedBoxedFutureResult<()> + Send + Sync + 'static,
+        ClosureFn: Fn(T) -> PinnedBoxedFutureResult<()> + Send + Sync + 'static,
     {
         let subscriber = Subscriber::new(
             name,
@@ -92,16 +85,15 @@ where
         uuid
     }
 
-    pub fn subscribe_closure<STRING, CLOSURE>(
+    pub fn subscribe_closure<IntoString: Into<String>, ClosureFn>(
         &mut self,
-        name: STRING,
-        closure: CLOSURE,
+        name: IntoString,
+        closure: ClosureFn,
         log_on_error: bool,
         remove_on_error: bool,
     ) -> Uuid
     where
-        STRING: Into<String>,
-        CLOSURE: Fn(T) -> Result<(), BoxedError> + Send + Sync + 'static,
+        ClosureFn: Fn(T) -> Result<(), BoxedError> + Send + Sync + 'static,
     {
         let subscriber = Subscriber::new(
             name,
@@ -116,10 +108,7 @@ where
         uuid
     }
 
-    pub fn unsubscribe<UUID>(&mut self, uuid: &UUID) -> bool
-    where
-        UUID: AsRef<Uuid>,
-    {
+    pub fn unsubscribe<UuidRef: AsRef<Uuid>>(&mut self, uuid: &UuidRef) -> bool {
         let uuid = uuid.as_ref();
 
         let index = self

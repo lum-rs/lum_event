@@ -1164,7 +1164,7 @@ checksum = "7f186d840b630ccb87d23408e975c91f4c1183751e5644b2d498a5235ed5e244"
 
 [[package]]
 name = "lum_event"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "lum_boxtypes",
  "lum_libs",

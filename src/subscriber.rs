@@ -39,15 +39,12 @@ impl<T> Subscriber<T>
 where
     T: Clone + Send,
 {
-    pub fn new<STRING>(
-        name: STRING,
+    pub fn new<IntoString: Into<String>>(
+        name: IntoString,
         log_on_error: bool,
         remove_on_error: bool,
         callback: Callback<T>,
-    ) -> Self
-    where
-        STRING: Into<String>,
-    {
+    ) -> Self {
         Self {
             name: name.into(),
             log_on_error,

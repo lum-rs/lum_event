@@ -64,10 +64,7 @@ impl<T> EventRepeater<T>
 where
     T: Clone + Send + 'static,
 {
-    pub async fn new<STRING>(name: STRING) -> Arc<Mutex<Self>>
-    where
-        STRING: Into<String>,
-    {
+    pub async fn new<IntoString: Into<String>>(name: IntoString) -> Arc<Mutex<Self>> {
         let event = Event::new(name);
         let event_repeater = Self {
             weak: OnceLock::new(),
