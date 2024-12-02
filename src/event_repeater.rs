@@ -53,18 +53,15 @@ where
     T: Clone + Send + 'static,
 {
     pub event: Event<T>,
-    weak: OnceLock<Weak<Mutex<Self>>>,
+    weak: OnceLock<Weak<Self>>,
     subscriptions: Mutex<HashMap<Uuid, (Uuid, JoinHandle<()>)>>,
 }
-
-unsafe impl<T> Send for EventRepeater<T> where T: Clone + Send + 'static {}
-unsafe impl<T> Sync for EventRepeater<T> where T: Clone + Send + 'static {}
 
 impl<T> EventRepeater<T>
 where
     T: Clone + Send + 'static,
 {
-    pub async fn new<IntoString: Into<String>>(name: IntoString) -> Arc<Mutex<Self>> {
+    pub async fn new<IntoString: Into<String>>(name: IntoString) -> Arc<Self> {
         let event = Event::new(name);
         let event_repeater = Self {
             weak: OnceLock::new(),
@@ -72,15 +69,15 @@ where
             subscriptions: Mutex::new(HashMap::new()),
         };
 
-        let arc = Arc::new(Mutex::new(event_repeater));
+        let arc = Arc::new(event_repeater);
         let weak = Arc::downgrade(&arc);
 
-        let result = arc.lock().await.weak.set(weak);
+        let result = arc.weak.set(weak);
         if result.is_err() {
-            error!("Failed to set EventRepeater {}'s Weak self-reference because it was already set. This should never happen. Panicking to prevent further undefined behavior.", arc.lock().await.event.name);
+            error!("Failed to set EventRepeater {}'s Weak self-reference because it was already set. This should never happen. Panicking to prevent further undefined behavior.", arc.event.name);
             unreachable!(
                 "Unable to set EventRepeater {}'s Weak self-reference because it was already set.",
-                arc.lock().await.event.name
+                arc.event.name
             );
         }
 
@@ -91,7 +88,7 @@ where
         self.subscriptions.lock().await.len()
     }
 
-    pub async fn attach(&self, event: &mut Event<T>, buffer: usize) -> Result<(), AttachError> {
+    pub async fn attach(&self, event: &Event<T>, buffer: usize) -> Result<(), AttachError> {
         let weak = match self.weak.get() {
             Some(weak) => weak,
             None => {
@@ -119,10 +116,12 @@ where
             });
         }
 
-        let (uuid, mut receiver) = event.subscribe_channel(&self.event.name, buffer, true, true);
+        let (uuid, mut receiver) = event
+            .subscribe_channel(&self.event.name, buffer, true, true)
+            .await;
         let join_handle = tokio::spawn(async move {
             while let Some(value) = receiver.recv().await {
-                let _ = arc.lock().await.event.dispatch(value).await;
+                let _ = arc.event.dispatch(value).await;
             }
         });
         subscriptions.insert(event.uuid, (uuid, join_handle));

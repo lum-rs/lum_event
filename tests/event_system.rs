@@ -24,78 +24,86 @@ mod tests {
         let event = Event::<String>::new(TEST_EVENT_NAME);
 
         assert_eq!(event.name, TEST_EVENT_NAME);
-        assert_eq!(event.subscriber_count(), 0);
+        assert_eq!(event.subscriber_count().await, 0);
     }
 
     #[tokio::test]
     async fn event_subscribe_channel() {
-        let mut event = Event::new(TEST_EVENT_NAME);
-        let (_, mut receiver) = event.subscribe_channel(TEST_CHANNEL_NAME, 10, false, false);
+        let event = Event::new(TEST_EVENT_NAME);
+        let (_, mut receiver) = event
+            .subscribe_channel(TEST_CHANNEL_NAME, 10, false, false)
+            .await;
 
         event.dispatch(TEST_DATA.to_string()).await.unwrap();
         let result = receiver.recv().await.unwrap();
 
-        assert_eq!(event.subscriber_count(), 1);
+        assert_eq!(event.subscriber_count().await, 1);
         assert_eq!(result, TEST_DATA.to_string());
     }
 
     #[tokio::test]
     async fn event_subscribe_async_closure() {
-        let mut event = Event::new(TEST_EVENT_NAME);
+        let event = Event::new(TEST_EVENT_NAME);
 
-        event.subscribe_async_closure(
-            TEST_ASYNC_CLOSURE_NAME,
-            move |data| {
-                Box::pin(async move {
-                    assert_eq!(data, TEST_DATA.to_string());
-                    Ok(())
-                })
-            },
-            false,
-            false,
-        );
+        event
+            .subscribe_async_closure(
+                TEST_ASYNC_CLOSURE_NAME,
+                move |data| {
+                    Box::pin(async move {
+                        assert_eq!(data, TEST_DATA.to_string());
+                        Ok(())
+                    })
+                },
+                false,
+                false,
+            )
+            .await;
 
         event.dispatch(TEST_DATA.to_string()).await.unwrap();
 
-        assert_eq!(event.subscriber_count(), 1);
+        assert_eq!(event.subscriber_count().await, 1);
     }
 
     #[tokio::test]
     async fn event_subscribe_closure() {
-        let mut event = Event::new(TEST_EVENT_NAME);
+        let event = Event::new(TEST_EVENT_NAME);
 
-        event.subscribe_closure(
-            TEST_CLOSURE_NAME,
-            move |data| {
-                assert_eq!(data, TEST_DATA.to_string());
-                Ok(())
-            },
-            false,
-            false,
-        );
+        event
+            .subscribe_closure(
+                TEST_CLOSURE_NAME,
+                move |data| {
+                    assert_eq!(data, TEST_DATA.to_string());
+                    Ok(())
+                },
+                false,
+                false,
+            )
+            .await;
 
         event.dispatch(TEST_DATA.to_string()).await.unwrap();
 
-        assert_eq!(event.subscriber_count(), 1);
+        assert_eq!(event.subscriber_count().await, 1);
     }
 
     #[tokio::test]
     async fn event_unsubscribe() {
-        let mut event = Event::new(TEST_EVENT_NAME);
+        let event = Event::new(TEST_EVENT_NAME);
         let count = Arc::new(AtomicU8::new(0));
 
         let count_clone = count.clone();
-        let uuid = event.subscribe_closure(
-            TEST_CLOSURE_NAME,
-            move |_data| {
-                count_clone.fetch_add(1, Ordering::Relaxed);
-                Ok(())
-            },
-            false,
-            false,
-        );
+        let uuid = event
+            .subscribe_closure(
+                TEST_CLOSURE_NAME,
+                move |_data| {
+                    count_clone.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                },
+                false,
+                false,
+            )
+            .await;
 
-        assert_eq!(event.subscriber_count(), 1);
+        assert_eq!(event.subscriber_count().await, 1);
         assert_eq!(count.load(Ordering::Relaxed), 0);
 
         event.dispatch(TEST_DATA.to_string()).await.unwrap();
@@ -104,9 +112,9 @@ mod tests {
         event.dispatch(TEST_DATA.to_string()).await.unwrap();
         assert_eq!(count.load(Ordering::Relaxed), 2);
 
-        let remove_result = event.unsubscribe(&uuid);
+        let remove_result = event.unsubscribe(&uuid).await;
         assert!(remove_result);
-        assert_eq!(event.subscriber_count(), 0);
+        assert_eq!(event.subscriber_count().await, 0);
 
         event.dispatch(TEST_DATA.to_string()).await.unwrap();
         assert_eq!(count.load(Ordering::Relaxed), 2);
@@ -114,18 +122,20 @@ mod tests {
 
     #[tokio::test]
     async fn event_dispatch_with_error() {
-        let mut event = Event::new(TEST_EVENT_NAME);
-        let _ = event.subscribe_closure(
-            TEST_CLOSURE_NAME,
-            |_data| Err(Box::new(io::Error::new(io::ErrorKind::Other, TEST_ERROR))),
-            true,
-            true,
-        );
-        assert_eq!(event.subscriber_count(), 1);
+        let event = Event::new(TEST_EVENT_NAME);
+        event
+            .subscribe_closure(
+                TEST_CLOSURE_NAME,
+                |_data| Err(Box::new(io::Error::new(io::ErrorKind::Other, TEST_ERROR))),
+                true,
+                true,
+            )
+            .await;
+        assert_eq!(event.subscriber_count().await, 1);
 
         let result = event.dispatch(TEST_DATA.to_string()).await;
         assert!(result.is_err());
-        assert_eq!(event.subscriber_count(), 0);
+        assert_eq!(event.subscriber_count().await, 0);
     }
 
     #[tokio::test]
@@ -139,8 +149,8 @@ mod tests {
         assert_eq!(event2, event2.uuid);
     }
 
-    #[tokio::test]
-    async fn event_debug() {
+    #[test]
+    fn event_debug() {
         let event = Event::<String>::new(TEST_EVENT_NAME);
         let debug_str = format!("{:?}", event);
         assert!(debug_str.contains("Event"));

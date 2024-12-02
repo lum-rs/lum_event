@@ -5,7 +5,10 @@ use std::{
 
 use lum_boxtypes::{BoxedError, PinnedBoxedFutureResult};
 use lum_libs::{
-    tokio::sync::mpsc::{channel, Receiver},
+    tokio::sync::{
+        mpsc::{channel, Receiver},
+        Mutex,
+    },
     uuid::Uuid,
 };
 use lum_log::error;
@@ -22,7 +25,7 @@ where
     pub name: String,
 
     pub uuid: Uuid,
-    subscribers: Vec<Subscriber<T>>,
+    subscribers: Mutex<Vec<Subscriber<T>>>,
 }
 
 impl<T> Event<T>
@@ -33,16 +36,17 @@ where
         Self {
             name: name.into(),
             uuid: Uuid::new_v4(),
-            subscribers: Vec::new(),
+            subscribers: Mutex::new(Vec::new()),
         }
     }
 
-    pub fn subscriber_count(&self) -> usize {
-        self.subscribers.len()
+    pub async fn subscriber_count(&self) -> usize {
+        let subscribers = self.subscribers.lock().await;
+        subscribers.len()
     }
 
-    pub fn subscribe_channel<IntoString: Into<String>>(
-        &mut self,
+    pub async fn subscribe_channel<IntoString: Into<String>>(
+        &self,
         name: IntoString,
         buffer: usize,
         log_on_error: bool,
@@ -57,13 +61,14 @@ where
         );
         let uuid = subscriber.uuid;
 
-        self.subscribers.push(subscriber);
+        let mut subscribers = self.subscribers.lock().await;
+        subscribers.push(subscriber);
 
         (uuid, receiver)
     }
 
-    pub fn subscribe_async_closure<IntoString: Into<String>, ClosureFn>(
-        &mut self,
+    pub async fn subscribe_async_closure<IntoString: Into<String>, ClosureFn>(
+        &self,
         name: IntoString,
         closure: ClosureFn,
         log_on_error: bool,
@@ -80,13 +85,14 @@ where
         );
         let uuid = subscriber.uuid;
 
-        self.subscribers.push(subscriber);
+        let mut subscribers = self.subscribers.lock().await;
+        subscribers.push(subscriber);
 
         uuid
     }
 
-    pub fn subscribe_closure<IntoString: Into<String>, ClosureFn>(
-        &mut self,
+    pub async fn subscribe_closure<IntoString: Into<String>, ClosureFn>(
+        &self,
         name: IntoString,
         closure: ClosureFn,
         log_on_error: bool,
@@ -103,34 +109,37 @@ where
         );
         let uuid = subscriber.uuid;
 
-        self.subscribers.push(subscriber);
+        let mut subscribers = self.subscribers.lock().await;
+        subscribers.push(subscriber);
 
         uuid
     }
 
-    pub fn unsubscribe<UuidRef: AsRef<Uuid>>(&mut self, uuid: &UuidRef) -> bool {
+    pub async fn unsubscribe<UuidRef: AsRef<Uuid>>(&self, uuid: &UuidRef) -> bool {
         let uuid = uuid.as_ref();
+        let mut subscribers = self.subscribers.lock().await;
 
-        let index = self
-            .subscribers
+        let index = subscribers
             .iter()
             .map(|subscriber| &subscriber.uuid)
             .position(|subscriber_uuid| *subscriber_uuid == *uuid);
 
         match index {
             Some(index) => {
-                self.subscribers.remove(index);
+                subscribers.remove(index);
                 true
             }
             None => false,
         }
     }
 
-    pub async fn dispatch(&mut self, data: T) -> Result<(), Vec<DispatchError<T>>> {
+    pub async fn dispatch(&self, data: T) -> Result<(), Vec<DispatchError<T>>> {
+        let mut subscribers = self.subscribers.lock().await;
+
         let mut errors = Vec::new();
         let mut subscribers_to_remove = Vec::new();
 
-        for (index, subscriber) in self.subscribers.iter().enumerate() {
+        for (index, subscriber) in subscribers.iter().enumerate() {
             let data = data.clone();
 
             let result = subscriber.dispatch(data).await;
@@ -155,7 +164,7 @@ where
         }
 
         for index in subscribers_to_remove.into_iter().rev() {
-            self.subscribers.remove(index);
+            subscribers.remove(index);
         }
 
         if errors.is_empty() {
@@ -194,7 +203,7 @@ where
         f.debug_struct(type_name::<Self>())
             .field("uuid", &self.uuid)
             .field("name", &self.name)
-            .field("subscribers", &self.subscribers.len())
+            .field("subscribers", &self.subscribers.blocking_lock().len())
             .finish()
     }
 }
