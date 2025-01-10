@@ -25,4 +25,4 @@ lto = false
 lum_boxtypes = "0.1.1"
 lum_libs = "0.1.5"
 lum_log = "0.1.4"
-thiserror = "2.0.3"
+thiserror = "2.0.11"
