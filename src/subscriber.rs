@@ -1,6 +1,6 @@
 use lum_boxtypes::{BoxedError, PinnedBoxedFutureResult};
 use lum_libs::{
-    tokio::sync::mpsc::{error::SendError, Sender},
+    tokio::sync::mpsc::{Sender, error::SendError},
     uuid::Uuid,
 };
 use thiserror::Error;

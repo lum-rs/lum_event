@@ -4,8 +4,8 @@ mod tests {
     use std::{
         io,
         sync::{
-            atomic::{AtomicU8, Ordering},
             Arc,
+            atomic::{AtomicU8, Ordering},
         },
     };
 

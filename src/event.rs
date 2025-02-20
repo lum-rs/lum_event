@@ -6,16 +6,16 @@ use std::{
 use lum_boxtypes::{BoxedError, PinnedBoxedFutureResult};
 use lum_libs::{
     tokio::sync::{
-        mpsc::{channel, Receiver},
         Mutex,
+        mpsc::{Receiver, channel},
     },
     uuid::Uuid,
 };
 use lum_log::error;
 
 use crate::{
-    subscriber::{Callback, DispatchError},
     Subscriber,
+    subscriber::{Callback, DispatchError},
 };
 
 pub struct Event<T>

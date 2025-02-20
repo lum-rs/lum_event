@@ -2,8 +2,8 @@
 name = "lum_event"
 version = "0.1.4"
 authors = ["Torben Schweren"]
-edition = "2021"
-rust-version = "1.82.0"
+edition = "2024"
+rust-version = "1.85.0"
 description = "lum framework's event library"
 readme = "README.md"
 repository = "https://github.com/lum-rs/lum_event"

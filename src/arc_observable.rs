@@ -5,7 +5,7 @@ use std::{
 
 use lum_libs::tokio::sync::Mutex;
 
-use crate::{subscriber::DispatchError, Event};
+use crate::{Event, subscriber::DispatchError};
 
 #[derive(Debug)]
 pub enum Result<T> {

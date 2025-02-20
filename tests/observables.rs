@@ -2,8 +2,8 @@
 mod tests {
 
     use std::sync::{
-        atomic::{AtomicU8, Ordering},
         Arc,
+        atomic::{AtomicU8, Ordering},
     };
 
     use lum_event::{ArcObservable, Observable};

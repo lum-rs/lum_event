@@ -13,7 +13,9 @@ use super::Event;
 
 #[derive(Debug, Error)]
 pub enum AttachError {
-    #[error("Tried to attach event {event_name} to EventRepeater {repeater_name} while it was uninitialized. Did you not use EventRepeater<T>::new()?")]
+    #[error(
+        "Tried to attach event {event_name} to EventRepeater {repeater_name} while it was uninitialized. Did you not use EventRepeater<T>::new()?"
+    )]
     NotInitialized {
         event_name: String,
         repeater_name: String,
@@ -74,7 +76,10 @@ where
 
         let result = arc.weak.set(weak);
         if result.is_err() {
-            error!("Failed to set EventRepeater {}'s Weak self-reference because it was already set. This should never happen. Panicking to prevent further undefined behavior.", arc.event.name);
+            error!(
+                "Failed to set EventRepeater {}'s Weak self-reference because it was already set. This should never happen. Panicking to prevent further undefined behavior.",
+                arc.event.name
+            );
             unreachable!(
                 "Unable to set EventRepeater {}'s Weak self-reference because it was already set.",
                 arc.event.name
@@ -95,7 +100,7 @@ where
                 return Err(AttachError::NotInitialized {
                     event_name: event.name.clone(),
                     repeater_name: self.event.name.clone(),
-                })
+                });
             }
         };
 
@@ -103,8 +108,14 @@ where
         let arc = match weak.upgrade() {
             Some(arc) => arc,
             None => {
-                error!("EventRepeater {}'s Weak self-reference could not be upgraded to Arc while attaching event {}. This should never happen. Panicking to prevent further undefined behavior.", self.event.name, event.name);
-                unreachable!("EventRepeater {}'s Weak self-reference could not be upgraded to Arc while attaching event {}.", self.event.name, event.name);
+                error!(
+                    "EventRepeater {}'s Weak self-reference could not be upgraded to Arc while attaching event {}. This should never happen. Panicking to prevent further undefined behavior.",
+                    self.event.name, event.name
+                );
+                unreachable!(
+                    "EventRepeater {}'s Weak self-reference could not be upgraded to Arc while attaching event {}.",
+                    self.event.name, event.name
+                );
             }
         };
 
@@ -138,7 +149,7 @@ where
                 return Err(DetachError::NotAttached {
                     event_name: event.name.clone(),
                     repeater_name: self.event.name.clone(),
-                })
+                });
             }
         };
         subscription.1.abort();
