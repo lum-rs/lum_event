@@ -3,6 +3,11 @@
 
 version: 2
 updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: main
+    schedule:
+      interval: "daily"
   - package-ecosystem: "cargo"
     directory: "/"
     target-branch: main
