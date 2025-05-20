@@ -1179,9 +1179,9 @@ dependencies = [
 
 [[package]]
 name = "lum_libs"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "931316931349d1dd512abe1905b5a248145759d4af7951e19701316ea7e6b79d"
+checksum = "633af3788f78ddc1fdc3b59b95e8122a35266ea82d4bd97f96a73a62c0381b3e"
 dependencies = [
  "async-trait",
  "dirs",
