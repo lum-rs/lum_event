@@ -23,6 +23,6 @@ lto = false
 
 [dependencies]
 lum_boxtypes = "0.2.0"
-lum_libs = "0.2.3"
+lum_libs = "0.2.4"
 lum_log = "0.2.3"
 thiserror = "2.0.12"
