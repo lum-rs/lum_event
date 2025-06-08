@@ -126,7 +126,7 @@ mod tests {
         event
             .subscribe_closure(
                 TEST_CLOSURE_NAME,
-                |_data| Err(Box::new(io::Error::new(io::ErrorKind::Other, TEST_ERROR))),
+                |_data| Err(Box::new(io::Error::other(TEST_ERROR))),
                 true,
                 true,
             )
