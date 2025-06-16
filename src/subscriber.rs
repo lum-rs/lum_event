@@ -7,7 +7,7 @@ use thiserror::Error;
 
 pub enum Callback<T> {
     Channel(Sender<T>),
-    Closure(Box<dyn Fn(T) -> Result<(), BoxedError> + Send + Sync>),
+    Closure(Box<dyn Fn(T) -> Result<(), BoxedError> + Send + Sync>), //TODO: Add to lum_boxtypes
     AsyncClosure(Box<dyn Fn(T) -> PinnedBoxedFutureResult<()> + Send + Sync>),
 }
 
@@ -39,8 +39,8 @@ impl<T> Subscriber<T>
 where
     T: Clone + Send,
 {
-    pub fn new<IntoString: Into<String>>(
-        name: IntoString,
+    pub fn new(
+        name: impl Into<String>,
         log_on_error: bool,
         remove_on_error: bool,
         callback: Callback<T>,

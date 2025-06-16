@@ -32,7 +32,7 @@ impl<T> Event<T>
 where
     T: Clone + Send,
 {
-    pub fn new<IntoString: Into<String>>(name: IntoString) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             uuid: Uuid::new_v4(),
@@ -45,9 +45,9 @@ where
         subscribers.len()
     }
 
-    pub async fn subscribe_channel<IntoString: Into<String>>(
+    pub async fn subscribe_channel(
         &self,
-        name: IntoString,
+        name: impl Into<String>,
         buffer: usize,
         log_on_error: bool,
         remove_on_error: bool,
@@ -67,16 +67,13 @@ where
         (uuid, receiver)
     }
 
-    pub async fn subscribe_async_closure<IntoString: Into<String>, ClosureFn>(
+    pub async fn subscribe_async_closure(
         &self,
-        name: IntoString,
-        closure: ClosureFn,
+        name: impl Into<String>,
+        closure: impl Fn(T) -> PinnedBoxedFutureResult<()> + Send + Sync + 'static,
         log_on_error: bool,
         remove_on_error: bool,
-    ) -> Uuid
-    where
-        ClosureFn: Fn(T) -> PinnedBoxedFutureResult<()> + Send + Sync + 'static,
-    {
+    ) -> Uuid {
         let subscriber = Subscriber::new(
             name,
             log_on_error,
@@ -91,16 +88,13 @@ where
         uuid
     }
 
-    pub async fn subscribe_closure<IntoString: Into<String>, ClosureFn>(
+    pub async fn subscribe_closure(
         &self,
-        name: IntoString,
-        closure: ClosureFn,
+        name: impl Into<String>,
+        closure: impl Fn(T) -> Result<(), BoxedError> + Send + Sync + 'static,
         log_on_error: bool,
         remove_on_error: bool,
-    ) -> Uuid
-    where
-        ClosureFn: Fn(T) -> Result<(), BoxedError> + Send + Sync + 'static,
-    {
+    ) -> Uuid {
         let subscriber = Subscriber::new(
             name,
             log_on_error,
@@ -115,7 +109,7 @@ where
         uuid
     }
 
-    pub async fn unsubscribe<UuidRef: AsRef<Uuid>>(&self, uuid: &UuidRef) -> bool {
+    pub async fn unsubscribe(&self, uuid: impl AsRef<Uuid>) -> bool {
         let uuid = uuid.as_ref();
         let mut subscribers = self.subscribers.lock().await;
 

@@ -20,7 +20,7 @@ impl<T> Observable<T>
 where
     T: Clone + Send + PartialEq,
 {
-    pub fn new<IntoString: Into<String>>(value: T, event_name: IntoString) -> Self {
+    pub fn new(value: T, event_name: impl Into<String>) -> Self {
         Self {
             value,
             on_change: Event::new(event_name),
