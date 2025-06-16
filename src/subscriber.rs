@@ -1,4 +1,4 @@
-use lum_boxtypes::{BoxedError, PinnedBoxedFutureResult};
+use lum_boxtypes::{BoxedError, BoxedErrorResult, PinnedBoxedFutureResult};
 use lum_libs::{
     tokio::sync::mpsc::{Sender, error::SendError},
     uuid::Uuid,
@@ -7,7 +7,7 @@ use thiserror::Error;
 
 pub enum Callback<T> {
     Channel(Sender<T>),
-    Closure(Box<dyn Fn(T) -> Result<(), BoxedError> + Send + Sync>), //TODO: Add to lum_boxtypes
+    Closure(Box<dyn Fn(T) -> BoxedErrorResult<()> + Send + Sync>), //TODO: Add to lum_boxtypes
     AsyncClosure(Box<dyn Fn(T) -> PinnedBoxedFutureResult<()> + Send + Sync>),
 }
 
