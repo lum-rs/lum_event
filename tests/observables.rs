@@ -75,7 +75,7 @@ mod tests {
 
     #[tokio::test]
     async fn arc_observable_subscriber_receives_data_on_change() {
-        let mut observable = ArcObservable::new(TEST_DATA_INITIAL, TEST_EVENT_NAME);
+        let observable = ArcObservable::new(TEST_DATA_INITIAL, TEST_EVENT_NAME);
 
         let count = Arc::new(AtomicU8::new(0));
 

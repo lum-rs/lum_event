@@ -38,10 +38,7 @@ where
         self.value.clone()
     }
 
-    // We technically don't need a mutable reference to self here,
-    // but we want only owners of the variable to be able to set new values.
-    // This also matches the API of the "normal" Observable.
-    pub async fn set(&mut self, value: T) -> Result<T> {
+    pub async fn set(&self, value: T) -> Result<T> {
         let mut hasher = DefaultHasher::new();
         value.hash(&mut hasher);
         let new_value_hash = hasher.finish();
