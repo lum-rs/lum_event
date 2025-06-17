@@ -232,9 +232,9 @@ dependencies = [
 
 [[package]]
 name = "lum_libs"
-version = "0.2.4"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f3039febce6ac695d69072a5943dc74e0b08d6d55f3dac14b58212cf4d5f305"
+checksum = "037fddc58fc5c4422a31205644d4c914c3a17c0ea6202ee1cd9a631b5c526aec"
 dependencies = [
  "fern",
  "humantime",
