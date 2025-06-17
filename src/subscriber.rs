@@ -7,7 +7,7 @@ use thiserror::Error;
 
 pub enum Callback<T> {
     Channel(Sender<T>),
-    Closure(Box<dyn Fn(T) -> BoxedErrorResult<()> + Send + Sync>), //TODO: Add to lum_boxtypes
+    Closure(Box<dyn Fn(T) -> BoxedErrorResult<()> + Send + Sync>),
     AsyncClosure(Box<dyn Fn(T) -> PinnedBoxedFutureResult<()> + Send + Sync>),
 }
 
