@@ -257,9 +257,9 @@ dependencies = [
 
 [[package]]
 name = "lum_log"
-version = "0.2.6"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae2aa8a9e10a382f3c41d280ef3a47277444ac311cc77ac99b8ba14c40d667ec"
+checksum = "581e3430d4df38dff24088add5f29d272160fb0f65c44098822d9978133b91f3"
 dependencies = [
  "lum_libs",
 ]
