@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn event_debug() {
         let event = Event::<String>::new(TEST_EVENT_NAME);
-        let debug_str = format!("{:?}", event);
+        let debug_str = format!("{event:?}");
         assert!(debug_str.contains("Event"));
         assert!(debug_str.contains("uuid"));
         assert!(debug_str.contains("name"));
@@ -162,7 +162,7 @@ mod tests {
     #[tokio::test]
     async fn test_display() {
         let event = Event::<String>::new(TEST_EVENT_NAME);
-        let display_str = format!("{}", event);
+        let display_str = format!("{event}");
         assert_eq!(display_str, "Event test_event");
     }
 }

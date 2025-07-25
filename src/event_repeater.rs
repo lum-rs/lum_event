@@ -42,27 +42,18 @@ pub enum DetachError {
 }
 
 #[derive(Error)]
-pub enum CloseError<T>
-where
-    T: Clone + Send + 'static,
-{
+pub enum CloseError<T: Clone + Send + 'static> {
     #[error("EventRepeater still has attached events. Detach all events before closing.")]
     AttachedEvents(EventRepeater<T>),
 }
 
-pub struct EventRepeater<T>
-where
-    T: Clone + Send + 'static,
-{
+pub struct EventRepeater<T: Clone + Send + 'static> {
     pub event: Event<T>,
     weak: OnceLock<Weak<Self>>,
     subscriptions: Mutex<HashMap<Uuid, (Uuid, JoinHandle<()>)>>,
 }
 
-impl<T> EventRepeater<T>
-where
-    T: Clone + Send + 'static,
-{
+impl<T: Clone + Send + 'static> EventRepeater<T> {
     pub async fn new(name: impl Into<String>) -> Arc<Self> {
         let event = Event::new(name);
         let event_repeater = Self {
@@ -168,10 +159,7 @@ where
     }
 }
 
-impl<T> AsRef<Event<T>> for EventRepeater<T>
-where
-    T: Clone + Send + 'static,
-{
+impl<T: Clone + Send + 'static> AsRef<Event<T>> for EventRepeater<T> {
     fn as_ref(&self) -> &Event<T> {
         &self.event
     }

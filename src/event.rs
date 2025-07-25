@@ -18,20 +18,14 @@ use crate::{
     subscriber::{Callback, DispatchError},
 };
 
-pub struct Event<T>
-where
-    T: Clone + Send,
-{
+pub struct Event<T: Clone + Send> {
     pub name: String,
 
     pub uuid: Uuid,
     subscribers: Mutex<Vec<Subscriber<T>>>,
 }
 
-impl<T> Event<T>
-where
-    T: Clone + Send,
-{
+impl<T: Clone + Send> Event<T> {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -169,30 +163,21 @@ where
     }
 }
 
-impl<T> PartialEq for Event<T>
-where
-    T: Clone + Send,
-{
+impl<T: Clone + Send> PartialEq for Event<T> {
     fn eq(&self, other: &Self) -> bool {
         self.uuid == other.uuid
     }
 }
 
-impl<T> PartialEq<Uuid> for Event<T>
-where
-    T: Clone + Send,
-{
+impl<T: Clone + Send> PartialEq<Uuid> for Event<T> {
     fn eq(&self, other: &Uuid) -> bool {
         self.uuid == *other
     }
 }
 
-impl<T> Eq for Event<T> where T: Clone + Send {}
+impl<T: Clone + Send> Eq for Event<T> {}
 
-impl<T> Debug for Event<T>
-where
-    T: Clone + Send,
-{
+impl<T: Clone + Send> Debug for Event<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct(type_name::<Self>())
             .field("uuid", &self.uuid)
@@ -202,10 +187,7 @@ where
     }
 }
 
-impl<T> Display for Event<T>
-where
-    T: Clone + Send,
-{
+impl<T: Clone + Send> Display for Event<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "Event {}", self.name)
     }

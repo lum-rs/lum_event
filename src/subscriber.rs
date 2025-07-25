@@ -23,10 +23,7 @@ pub enum DispatchError<T> {
     AsyncClosure(BoxedError),
 }
 
-pub struct Subscriber<T>
-where
-    T: Clone + Send,
-{
+pub struct Subscriber<T: Clone + Send> {
     pub name: String,
     pub log_on_error: bool,
     pub remove_on_error: bool,
@@ -35,10 +32,7 @@ where
     pub uuid: Uuid,
 }
 
-impl<T> Subscriber<T>
-where
-    T: Clone + Send,
-{
+impl<T: Clone + Send> Subscriber<T> {
     pub fn new(
         name: impl Into<String>,
         log_on_error: bool,
@@ -67,22 +61,16 @@ where
     }
 }
 
-impl<T> PartialEq for Subscriber<T>
-where
-    T: Clone + Send,
-{
+impl<T: Clone + Send> PartialEq for Subscriber<T> {
     fn eq(&self, other: &Self) -> bool {
         self.uuid == other.uuid
     }
 }
 
-impl<T> PartialEq<Uuid> for Subscriber<T>
-where
-    T: Clone + Send,
-{
+impl<T: Clone + Send> PartialEq<Uuid> for Subscriber<T> {
     fn eq(&self, other: &Uuid) -> bool {
         self.uuid == *other
     }
 }
 
-impl<T> Eq for Subscriber<T> where T: Clone + Send {}
+impl<T: Clone + Send> Eq for Subscriber<T> {}

@@ -14,19 +14,13 @@ pub enum Result<T> {
 }
 
 #[derive(Debug)]
-pub struct ArcObservable<T>
-where
-    T: Send + Hash,
-{
+pub struct ArcObservable<T: Send + Hash> {
     pub on_change: Event<Arc<Mutex<T>>>,
 
     value: Arc<Mutex<T>>,
 }
 
-impl<T> ArcObservable<T>
-where
-    T: Send + Hash,
-{
+impl<T: Send + Hash> ArcObservable<T> {
     pub fn new(value: T, event_name: impl Into<String>) -> Self {
         Self {
             value: Arc::new(Mutex::new(value)),
@@ -65,37 +59,25 @@ where
     }
 }
 
-impl<T> AsRef<Event<Arc<Mutex<T>>>> for ArcObservable<T>
-where
-    T: Send + Hash,
-{
+impl<T: Send + Hash> AsRef<Event<Arc<Mutex<T>>>> for ArcObservable<T> {
     fn as_ref(&self) -> &Event<Arc<Mutex<T>>> {
         &self.on_change
     }
 }
 
-impl<T> AsMut<Event<Arc<Mutex<T>>>> for ArcObservable<T>
-where
-    T: Send + Hash,
-{
+impl<T: Send + Hash> AsMut<Event<Arc<Mutex<T>>>> for ArcObservable<T> {
     fn as_mut(&mut self) -> &mut Event<Arc<Mutex<T>>> {
         &mut self.on_change
     }
 }
 
-impl<T> Hash for ArcObservable<T>
-where
-    T: Send + Hash,
-{
+impl<T: Send + Hash> Hash for ArcObservable<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.value.blocking_lock().hash(state);
     }
 }
 
-impl<T> PartialEq for ArcObservable<T>
-where
-    T: Send + Hash,
-{
+impl<T: Send + Hash> PartialEq for ArcObservable<T> {
     fn eq(&self, other: &Self) -> bool {
         let mut hasher = DefaultHasher::new();
         self.value.blocking_lock().hash(&mut hasher);
@@ -109,10 +91,7 @@ where
     }
 }
 
-impl<T> PartialEq<T> for ArcObservable<T>
-where
-    T: Send + Hash,
-{
+impl<T: Send + Hash> PartialEq<T> for ArcObservable<T> {
     fn eq(&self, other: &T) -> bool {
         let mut hasher = DefaultHasher::new();
         self.value.blocking_lock().hash(&mut hasher);
@@ -126,4 +105,4 @@ where
     }
 }
 
-impl<T> Eq for ArcObservable<T> where T: Send + Hash {}
+impl<T: Send + Hash> Eq for ArcObservable<T> {}

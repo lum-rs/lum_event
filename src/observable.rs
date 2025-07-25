@@ -7,19 +7,13 @@ pub enum Result<T> {
 }
 
 #[derive(Debug)]
-pub struct Observable<T>
-where
-    T: Clone + Send + PartialEq,
-{
+pub struct Observable<T: Clone + Send + PartialEq> {
     pub on_change: Event<T>,
 
     value: T,
 }
 
-impl<T> Observable<T>
-where
-    T: Clone + Send + PartialEq,
-{
+impl<T: Clone + Send + PartialEq> Observable<T> {
     pub fn new(value: T, event_name: impl Into<String>) -> Self {
         Self {
             value,
@@ -47,10 +41,7 @@ where
     }
 }
 
-impl<T> AsRef<T> for Observable<T>
-where
-    T: Clone + Send + PartialEq,
-{
+impl<T: Clone + Send + PartialEq> AsRef<T> for Observable<T> {
     fn as_ref(&self) -> &T {
         &self.value
     }
@@ -62,49 +53,34 @@ impl AsRef<str> for Observable<&str> {
     }
 }
 
-impl<T> AsMut<T> for Observable<T>
-where
-    T: Clone + Send + PartialEq,
-{
+impl<T: Clone + Send + PartialEq> AsMut<T> for Observable<T> {
     fn as_mut(&mut self) -> &mut T {
         &mut self.value
     }
 }
 
-impl<T> AsRef<Event<T>> for Observable<T>
-where
-    T: Clone + Send + PartialEq,
-{
+impl<T: Clone + Send + PartialEq> AsRef<Event<T>> for Observable<T> {
     fn as_ref(&self) -> &Event<T> {
         &self.on_change
     }
 }
 
-impl<T> AsMut<Event<T>> for Observable<T>
-where
-    T: Clone + Send + PartialEq,
-{
+impl<T: Clone + Send + PartialEq> AsMut<Event<T>> for Observable<T> {
     fn as_mut(&mut self) -> &mut Event<T> {
         &mut self.on_change
     }
 }
 
-impl<T> PartialEq for Observable<T>
-where
-    T: Clone + Send + PartialEq,
-{
+impl<T: Clone + Send + PartialEq> PartialEq for Observable<T> {
     fn eq(&self, other: &Self) -> bool {
         self.value == other.value
     }
 }
 
-impl<T> PartialEq<T> for Observable<T>
-where
-    T: Clone + Send + PartialEq,
-{
+impl<T: Clone + Send + PartialEq> PartialEq<T> for Observable<T> {
     fn eq(&self, other: &T) -> bool {
         self.value == *other
     }
 }
 
-impl<T> Eq for Observable<T> where T: Clone + Send + PartialEq {}
+impl<T: Clone + Send + PartialEq> Eq for Observable<T> {}
