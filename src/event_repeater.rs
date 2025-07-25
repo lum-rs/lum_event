@@ -2,7 +2,7 @@ use lum_libs::{
     tokio::{self, sync::Mutex, task::JoinHandle},
     uuid::Uuid,
 };
-use lum_log::error;
+use lum_log::{error, error_unreachable};
 use std::{
     collections::HashMap,
     sync::{Arc, OnceLock, Weak},
@@ -67,12 +67,8 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
 
         let result = arc.weak.set(weak);
         if result.is_err() {
-            error!(
+            error_unreachable!(
                 "Failed to set EventRepeater {}'s Weak self-reference because it was already set. This should never happen. Panicking to prevent further undefined behavior.",
-                arc.event.name
-            );
-            unreachable!(
-                "Unable to set EventRepeater {}'s Weak self-reference because it was already set.",
                 arc.event.name
             );
         }
@@ -99,13 +95,10 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         let arc = match weak.upgrade() {
             Some(arc) => arc,
             None => {
-                error!(
+                error_unreachable!(
                     "EventRepeater {}'s Weak self-reference could not be upgraded to Arc while attaching event {}. This should never happen. Panicking to prevent further undefined behavior.",
-                    self.event.name, event.name
-                );
-                unreachable!(
-                    "EventRepeater {}'s Weak self-reference could not be upgraded to Arc while attaching event {}.",
-                    self.event.name, event.name
+                    self.event.name,
+                    event.name
                 );
             }
         };
