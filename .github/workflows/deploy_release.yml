@@ -12,7 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Setup Rust toolchain for ubuntu-latest
-        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48
+        uses: actions-rust-lang/setup-rust-toolchain@2fcdc490d667999e01ddbbf0f2823181beef6b39
       - name: Read source branch version
         id: source_version
         run: echo "version=$(cargo read-manifest | jq -r .version)" >> $GITHUB_OUTPUT
@@ -42,7 +42,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Setup Rust toolchain for ubuntu-latest
-        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48
+        uses: actions-rust-lang/setup-rust-toolchain@2fcdc490d667999e01ddbbf0f2823181beef6b39
       - name: Login to crates.io
         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
         with:
@@ -63,7 +63,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Setup Rust toolchain for ubuntu-latest
-        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48
+        uses: actions-rust-lang/setup-rust-toolchain@2fcdc490d667999e01ddbbf0f2823181beef6b39
       - name: Package
         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
         with:
