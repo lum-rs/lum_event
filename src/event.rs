@@ -133,7 +133,7 @@ impl<T: Clone + Send> Event<T> {
             }
         }
 
-        for uuid in subscribers_to_remove.into_iter().rev() {
+        for uuid in subscribers_to_remove.into_iter() {
             self.subscribers.remove(&uuid);
         }
 
