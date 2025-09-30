@@ -28,7 +28,6 @@ pub struct Subscriber<T: Clone + Send> {
     pub log_on_error: bool,
     pub remove_on_error: bool,
     pub callback: Callback<T>,
-
     pub uuid: Uuid,
 }
 

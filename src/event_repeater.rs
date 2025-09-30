@@ -14,7 +14,7 @@ use super::Event;
 #[derive(Debug, Error)]
 pub enum AttachError {
     #[error(
-        "Tried to attach event {event_name} to EventRepeater {repeater_name} while it was uninitialized. Did you not use EventRepeater<T>::new()?"
+        "Tried to attach event {event_name} to EventRepeater {repeater_name} while it was uninitialized"
     )]
     NotInitialized {
         event_name: String,
@@ -22,7 +22,7 @@ pub enum AttachError {
     },
 
     #[error(
-        "Tried to attach event {event_name} to EventRepeater {repeater_name}, which was already attached to it."
+        "Tried to attach event {event_name} to EventRepeater {repeater_name}, which was already attached to it"
     )]
     AlreadyAttached {
         event_name: String,
@@ -33,7 +33,7 @@ pub enum AttachError {
 #[derive(Debug, Error)]
 pub enum DetachError {
     #[error(
-        "Tried to detach event {event_name} from EventRepeater {repeater_name}, which was not attached."
+        "Tried to detach event {event_name} from EventRepeater {repeater_name}, which was not attached"
     )]
     NotAttached {
         event_name: String,
@@ -43,12 +43,19 @@ pub enum DetachError {
 
 #[derive(Error)]
 pub enum CloseError<T: Clone + Send + 'static> {
-    #[error("EventRepeater still has attached events. Detach all events before closing.")]
-    AttachedEvents(EventRepeater<T>),
+    #[error(
+        "EventRepeater {repeater_name} still has attached events. Detach all events before closing"
+    )]
+    AttachedEvents {
+        repeater_name: String,
+        repeater: EventRepeater<T>,
+    },
 }
 
+//TODO: Use single event loop task instead of one per attached event
 pub struct EventRepeater<T: Clone + Send + 'static> {
     pub event: Event<T>,
+
     weak: OnceLock<Weak<Self>>,
     subscriptions: Mutex<HashMap<Uuid, (Uuid, JoinHandle<()>)>>,
 }
@@ -77,16 +84,19 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
     }
 
     pub async fn subscription_count(&self) -> usize {
-        self.subscriptions.lock().await.len()
+        let subscriptions = self.subscriptions.lock().await;
+        subscriptions.len()
     }
 
     pub async fn attach(&self, event: &Event<T>, buffer: usize) -> Result<(), AttachError> {
         let weak = match self.weak.get() {
             Some(weak) => weak,
             None => {
+                let event_name = event.name.clone();
+                let repeater_name = self.event.name.clone();
                 return Err(AttachError::NotInitialized {
-                    event_name: event.name.clone(),
-                    repeater_name: self.event.name.clone(),
+                    event_name,
+                    repeater_name,
                 });
             }
         };
@@ -105,21 +115,26 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
 
         let mut subscriptions = self.subscriptions.lock().await;
         if subscriptions.contains_key(&event.uuid) {
+            let event_name = event.name.clone();
+            let repeater_name = self.event.name.clone();
+
             return Err(AttachError::AlreadyAttached {
-                event_name: event.name.clone(),
-                repeater_name: self.event.name.clone(),
+                event_name,
+                repeater_name,
             });
         }
 
-        let (uuid, mut receiver) = event
+        let (subscriber_uuid, mut receiver) = event
             .subscribe_channel(&self.event.name, buffer, true, true)
             .await;
+
         let join_handle = tokio::spawn(async move {
             while let Some(value) = receiver.recv().await {
                 let _ = arc.event.dispatch(value).await;
             }
         });
-        subscriptions.insert(event.uuid, (uuid, join_handle));
+
+        subscriptions.insert(event.uuid, (subscriber_uuid, join_handle));
 
         Ok(())
     }
@@ -130,9 +145,12 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         let subscription = match subscriptions.remove(&event.uuid) {
             Some(subscription) => subscription,
             None => {
+                let event_name = event.name.clone();
+                let repeater_name = self.event.name.clone();
+
                 return Err(DetachError::NotAttached {
-                    event_name: event.name.clone(),
-                    repeater_name: self.event.name.clone(),
+                    event_name,
+                    repeater_name,
                 });
             }
         };
@@ -145,7 +163,11 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         let subscription_count = self.subscription_count().await;
 
         if subscription_count > 0 {
-            return Err(CloseError::AttachedEvents(self));
+            let repeater_name = self.event.name.clone();
+            return Err(CloseError::AttachedEvents {
+                repeater_name,
+                repeater: self,
+            });
         }
 
         Ok(())

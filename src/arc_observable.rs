@@ -1,3 +1,4 @@
+use core::result::Result as CoreResult;
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
     sync::Arc,
@@ -10,7 +11,7 @@ use crate::{Event, subscriber::DispatchError};
 #[derive(Debug)]
 pub enum Result<T> {
     Unchanged,
-    Changed(core::result::Result<(), Vec<DispatchError<Arc<Mutex<T>>>>>),
+    Changed(CoreResult<(), Vec<DispatchError<Arc<Mutex<T>>>>>),
 }
 
 #[derive(Debug)]
@@ -73,7 +74,8 @@ impl<T: Send + Hash> AsMut<Event<Arc<Mutex<T>>>> for ArcObservable<T> {
 
 impl<T: Send + Hash> Hash for ArcObservable<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.value.blocking_lock().hash(state);
+        let value = self.value.blocking_lock();
+        value.hash(state);
     }
 }
 

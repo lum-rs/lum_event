@@ -1,9 +1,11 @@
+use core::result::Result as CoreResult;
+
 use crate::{Event, subscriber::DispatchError};
 
 #[derive(Debug)]
 pub enum Result<T> {
     Unchanged,
-    Changed(core::result::Result<(), Vec<DispatchError<T>>>),
+    Changed(CoreResult<(), Vec<DispatchError<T>>>),
 }
 
 #[derive(Debug)]

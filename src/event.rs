@@ -20,8 +20,8 @@ use crate::{
 
 pub struct Event<T: Clone + Send> {
     pub name: String,
-
     pub uuid: Uuid,
+
     subscribers: Mutex<Vec<Subscriber<T>>>,
 }
 
@@ -141,7 +141,10 @@ impl<T: Clone + Send> Event<T> {
 
                 if subscriber.remove_on_error {
                     if subscriber.log_on_error {
-                        error!("Subscriber will be unregistered from event.");
+                        error!(
+                            "Subscriber {} will be unregistered from event.",
+                            subscriber.name
+                        );
                     }
 
                     subscribers_to_remove.push(index);
@@ -179,16 +182,27 @@ impl<T: Clone + Send> Eq for Event<T> {}
 
 impl<T: Clone + Send> Debug for Event<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let subscribers = self.subscribers.blocking_lock();
+        let sub_count = subscribers.len();
+
         f.debug_struct(type_name::<Self>())
             .field("uuid", &self.uuid)
             .field("name", &self.name)
-            .field("subscribers", &self.subscribers.blocking_lock().len())
+            .field("subscribers", &sub_count)
             .finish()
     }
 }
 
 impl<T: Clone + Send> Display for Event<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Event {}", self.name)
+        let subscribers = self.subscribers.blocking_lock();
+        let sub_count = subscribers.len();
+        let sub_word = if sub_count == 1 {
+            "subscriber"
+        } else {
+            "subscribers"
+        };
+
+        write!(f, "Event {} ({} {})", self.name, sub_count, sub_word)
     }
 }
