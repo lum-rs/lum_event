@@ -25,4 +25,4 @@ lto = false
 lum_boxtypes = "0.2.2"
 lum_libs = { version = "0.2.8", features = ["dashmap", "fern", "humantime", "log", "serde", "tokio", "uuid"] }
 lum_log = "0.2.7"
-thiserror = "2.0.12"
+thiserror = "2.0.17"
