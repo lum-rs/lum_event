@@ -5,10 +5,8 @@ use std::{
 
 use lum_boxtypes::{BoxedError, PinnedBoxedFutureResult};
 use lum_libs::{
-    tokio::sync::{
-        Mutex,
-        mpsc::{Receiver, channel},
-    },
+    dashmap::DashMap,
+    tokio::sync::mpsc::{Receiver, channel},
     uuid::Uuid,
 };
 use lum_log::error;
@@ -22,7 +20,7 @@ pub struct Event<T: Clone + Send> {
     pub name: String,
     pub uuid: Uuid,
 
-    subscribers: Mutex<Vec<Subscriber<T>>>,
+    subscribers: DashMap<Uuid, Subscriber<T>>,
 }
 
 impl<T: Clone + Send> Event<T> {
@@ -30,13 +28,12 @@ impl<T: Clone + Send> Event<T> {
         Self {
             name: name.into(),
             uuid: Uuid::new_v4(),
-            subscribers: Mutex::new(Vec::new()),
+            subscribers: DashMap::new(),
         }
     }
 
     pub async fn subscriber_count(&self) -> usize {
-        let subscribers = self.subscribers.lock().await;
-        subscribers.len()
+        self.subscribers.len()
     }
 
     pub async fn subscribe_channel(
@@ -54,9 +51,7 @@ impl<T: Clone + Send> Event<T> {
             Callback::Channel(sender),
         );
         let uuid = subscriber.uuid;
-
-        let mut subscribers = self.subscribers.lock().await;
-        subscribers.push(subscriber);
+        self.subscribers.insert(uuid, subscriber);
 
         (uuid, receiver)
     }
@@ -75,9 +70,7 @@ impl<T: Clone + Send> Event<T> {
             Callback::AsyncClosure(Box::new(closure)),
         );
         let uuid = subscriber.uuid;
-
-        let mut subscribers = self.subscribers.lock().await;
-        subscribers.push(subscriber);
+        self.subscribers.insert(uuid, subscriber);
 
         uuid
     }
@@ -96,40 +89,26 @@ impl<T: Clone + Send> Event<T> {
             Callback::Closure(Box::new(closure)),
         );
         let uuid = subscriber.uuid;
-
-        let mut subscribers = self.subscribers.lock().await;
-        subscribers.push(subscriber);
+        self.subscribers.insert(uuid, subscriber);
 
         uuid
     }
 
     pub async fn unsubscribe(&self, uuid: impl AsRef<Uuid>) -> bool {
         let uuid = uuid.as_ref();
-        let mut subscribers = self.subscribers.lock().await;
-
-        let index = subscribers
-            .iter()
-            .map(|subscriber| &subscriber.uuid)
-            .position(|subscriber_uuid| *subscriber_uuid == *uuid);
-
-        match index {
-            Some(index) => {
-                subscribers.remove(index);
-                true
-            }
-            None => false,
-        }
+        let value = self.subscribers.remove(uuid);
+        value.is_some()
     }
 
     pub async fn dispatch(&self, data: T) -> Result<(), Vec<DispatchError<T>>> {
-        let mut subscribers = self.subscribers.lock().await;
-
         let mut errors = Vec::new();
         let mut subscribers_to_remove = Vec::new();
 
-        for (index, subscriber) in subscribers.iter().enumerate() {
-            let data = data.clone();
+        for ref_multi in self.subscribers.iter() {
+            let uuid = *ref_multi.key();
+            let subscriber = ref_multi.value();
 
+            let data = data.clone();
             let result = subscriber.dispatch(data).await;
             if let Err(err) = result {
                 if subscriber.log_on_error {
@@ -147,22 +126,22 @@ impl<T: Clone + Send> Event<T> {
                         );
                     }
 
-                    subscribers_to_remove.push(index);
+                    subscribers_to_remove.push(uuid);
                 }
 
                 errors.push(err);
             }
         }
 
-        for index in subscribers_to_remove.into_iter().rev() {
-            subscribers.remove(index);
+        for uuid in subscribers_to_remove.into_iter().rev() {
+            self.subscribers.remove(&uuid);
         }
 
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors)
+        if !errors.is_empty() {
+            return Err(errors);
         }
+
+        Ok(())
     }
 }
 
@@ -182,8 +161,7 @@ impl<T: Clone + Send> Eq for Event<T> {}
 
 impl<T: Clone + Send> Debug for Event<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let subscribers = self.subscribers.blocking_lock();
-        let sub_count = subscribers.len();
+        let sub_count = self.subscribers.len();
 
         f.debug_struct(type_name::<Self>())
             .field("uuid", &self.uuid)
@@ -195,8 +173,7 @@ impl<T: Clone + Send> Debug for Event<T> {
 
 impl<T: Clone + Send> Display for Event<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let subscribers = self.subscribers.blocking_lock();
-        let sub_count = subscribers.len();
+        let sub_count = self.subscribers.len();
         let sub_word = if sub_count == 1 {
             "subscriber"
         } else {

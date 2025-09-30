@@ -163,6 +163,14 @@ mod tests {
     async fn test_display() {
         let event = Event::<String>::new(TEST_EVENT_NAME);
         let display_str = format!("{event}");
-        assert_eq!(display_str, "Event test_event");
+        assert_eq!(display_str, "Event test_event (0 subscribers)");
+
+        let _ = event.subscribe_channel("Test", 100, false, false).await;
+        let display_str = format!("{event}");
+        assert_eq!(display_str, "Event test_event (1 subscriber)");
+
+        let _ = event.subscribe_channel("Test2", 100, false, false).await;
+        let display_str = format!("{event}");
+        assert_eq!(display_str, "Event test_event (2 subscribers)");
     }
 }

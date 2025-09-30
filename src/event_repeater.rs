@@ -1,12 +1,10 @@
 use lum_libs::{
-    tokio::{self, sync::Mutex, task::JoinHandle},
+    dashmap::DashMap,
+    tokio::{self, task::JoinHandle},
     uuid::Uuid,
 };
 use lum_log::{error, error_unreachable};
-use std::{
-    collections::HashMap,
-    sync::{Arc, OnceLock, Weak},
-};
+use std::sync::{Arc, OnceLock, Weak};
 use thiserror::Error;
 
 use super::Event;
@@ -57,7 +55,7 @@ pub struct EventRepeater<T: Clone + Send + 'static> {
     pub event: Event<T>,
 
     weak: OnceLock<Weak<Self>>,
-    subscriptions: Mutex<HashMap<Uuid, (Uuid, JoinHandle<()>)>>,
+    subscriptions: DashMap<Uuid, (Uuid, JoinHandle<()>)>,
 }
 
 impl<T: Clone + Send + 'static> EventRepeater<T> {
@@ -66,7 +64,7 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         let event_repeater = Self {
             weak: OnceLock::new(),
             event,
-            subscriptions: Mutex::new(HashMap::new()),
+            subscriptions: DashMap::new(),
         };
 
         let arc = Arc::new(event_repeater);
@@ -84,8 +82,7 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
     }
 
     pub async fn subscription_count(&self) -> usize {
-        let subscriptions = self.subscriptions.lock().await;
-        subscriptions.len()
+        self.subscriptions.len()
     }
 
     pub async fn attach(&self, event: &Event<T>, buffer: usize) -> Result<(), AttachError> {
@@ -113,8 +110,7 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
             }
         };
 
-        let mut subscriptions = self.subscriptions.lock().await;
-        if subscriptions.contains_key(&event.uuid) {
+        if self.subscriptions.contains_key(&event.uuid) {
             let event_name = event.name.clone();
             let repeater_name = self.event.name.clone();
 
@@ -134,15 +130,14 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
             }
         });
 
-        subscriptions.insert(event.uuid, (subscriber_uuid, join_handle));
+        self.subscriptions
+            .insert(event.uuid, (subscriber_uuid, join_handle));
 
         Ok(())
     }
 
     pub async fn detach(&self, event: &Event<T>) -> Result<(), DetachError> {
-        let mut subscriptions = self.subscriptions.lock().await;
-
-        let subscription = match subscriptions.remove(&event.uuid) {
+        let subscription = match self.subscriptions.remove(&event.uuid) {
             Some(subscription) => subscription,
             None => {
                 let event_name = event.name.clone();
@@ -154,7 +149,7 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
                 });
             }
         };
-        subscription.1.abort();
+        subscription.1.1.abort();
 
         Ok(())
     }
