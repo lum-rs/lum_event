@@ -6,7 +6,7 @@ use lum_libs::{
             Mutex,
             mpsc::{Receiver, error::TryRecvError},
         },
-        task::JoinHandle,
+        task::{self, JoinHandle},
     },
     uuid::Uuid,
 };
@@ -155,11 +155,11 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
 
         if self.subscriptions.is_empty() {
             if let Some(handle) = receive_loop.as_ref() {
-                handle.abort();
+                handle.abort(); //Task could already be finished, but aborting a finished task is safe (does not alter anything)
             }
 
             *receive_loop = None;
-        } else if receive_loop.is_none() {
+        } else if receive_loop.is_none() || receive_loop.as_ref().unwrap().is_finished() {
             let event = self.event.clone();
             let subscriptions = self.subscriptions.clone();
             let handle = spawn(async move {
@@ -175,52 +175,65 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         subscriptions: Arc<DashMap<Uuid, Subscriber<T>>>,
     ) {
         loop {
+            let mut dispatched = false;
             let mut subscribers_to_remove = Vec::new();
             for mut entry in subscriptions.iter_mut() {
                 let event_uuid = *entry.key();
                 let subscriber = entry.value_mut();
 
-                let data = match subscriber.receiver.try_recv() {
-                    Ok(data) => data,
-                    Err(TryRecvError::Empty) => continue,
-                    Err(TryRecvError::Disconnected) => {
+                // Drain all available messages from the subscriber's channel
+                loop {
+                    let data = match subscriber.receiver.try_recv() {
+                        Ok(data) => data,
+                        Err(TryRecvError::Empty) => break,
+                        Err(TryRecvError::Disconnected) => {
+                            if subscriber.log_on_error {
+                                warn!(
+                                    "EventRepeater {}'s subscriber {} closed its channel. It will be removed from the list of subscribers.",
+                                    event.name, subscriber.uuid
+                                );
+                            }
+                            subscribers_to_remove.push(event_uuid);
+                            break;
+                        }
+                    };
+
+                    dispatched = true;
+                    let dispatch_result = event.dispatch(data).await;
+                    if let Err(errs) = dispatch_result {
                         if subscriber.log_on_error {
-                            warn!(
-                                "EventRepeater {}'s subscriber {} closed its channel. It will be removed from the list of subscribers.",
-                                event.name, subscriber.uuid
-                            );
-                        }
-                        subscribers_to_remove.push(event_uuid);
-                        continue;
-                    }
-                };
-
-                let dispatch_result = event.dispatch(data).await;
-                if let Err(errs) = dispatch_result {
-                    if subscriber.log_on_error {
-                        for err in errs.iter() {
-                            error!(
-                                "EventRepeater {} failed to dispatch data to subscriber {}: {}.",
-                                event.name, subscriber.name, err
-                            );
-                        }
-                    }
-
-                    if subscriber.remove_on_error {
-                        if subscriber.log_on_error {
-                            error!(
-                                "Subscriber {} will be unregistered from EventRepeater {}.",
-                                subscriber.name, event.name
-                            );
+                            for err in errs.iter() {
+                                error!(
+                                    "EventRepeater {} failed to dispatch data to subscriber {}: {}.",
+                                    event.name, subscriber.name, err
+                                );
+                            }
                         }
 
-                        subscribers_to_remove.push(event_uuid);
+                        if subscriber.remove_on_error {
+                            if subscriber.log_on_error {
+                                error!(
+                                    "Subscriber {} will be unregistered from EventRepeater {}.",
+                                    subscriber.name, event.name
+                                );
+                            }
+
+                            subscribers_to_remove.push(event_uuid);
+                        }
                     }
                 }
             }
 
             for uuid in subscribers_to_remove.into_iter() {
                 subscriptions.remove(&uuid);
+            }
+
+            if subscriptions.is_empty() {
+                break;
+            }
+
+            if !dispatched {
+                task::yield_now().await;
             }
         }
     }
