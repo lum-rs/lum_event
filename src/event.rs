@@ -32,7 +32,7 @@ impl<T: Clone + Send> Event<T> {
         }
     }
 
-    pub async fn subscriber_count(&self) -> usize {
+    pub fn subscriber_count(&self) -> usize {
         self.subscribers.len()
     }
 
@@ -158,6 +158,8 @@ impl<T: Clone + Send> PartialEq<Uuid> for Event<T> {
 }
 
 impl<T: Clone + Send> Eq for Event<T> {}
+
+//TODO: Hook into Drop?
 
 impl<T: Clone + Send> Debug for Event<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
