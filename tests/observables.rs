@@ -14,8 +14,9 @@ mod tests {
     static TEST_DATA: &str = "test_data";
     static TEST_DATA_INITIAL: &str = "Did not trigger";
 
-    #[tokio::test]
-    async fn observable_new() {
+    //TODO: This is a unit test. Move to observable.rs
+    #[test]
+    fn observable_new() {
         let observable = Observable::new(TEST_DATA, TEST_EVENT_NAME);
         let data = observable.get();
         let data_as_ref: &str = observable.as_ref();
@@ -25,6 +26,8 @@ mod tests {
         assert_eq!(data_as_ref, TEST_DATA);
     }
 
+    //TODO: This is an integration test that stretches across multiple components. Move to event_system.rs
+    //TODO: Use sender/receiver instead?
     #[tokio::test]
     async fn observable_subscriber_receives_data_on_change() {
         let mut observable = Observable::new(TEST_DATA_INITIAL, TEST_EVENT_NAME);
@@ -44,7 +47,7 @@ mod tests {
                 false,
             )
             .await;
-        assert_eq!(observable.on_change.subscriber_count().await, 1);
+        assert_eq!(observable.on_change.subscriber_count(), 1);
         assert_eq!(count.load(Ordering::Relaxed), 0);
 
         observable.set(TEST_DATA).await;
@@ -54,12 +57,14 @@ mod tests {
         assert_eq!(count.load(Ordering::Relaxed), 1);
 
         observable.on_change.unsubscribe(&uuid).await;
-        assert_eq!(observable.on_change.subscriber_count().await, 0);
+        assert_eq!(observable.on_change.subscriber_count(), 0);
 
         observable.set(TEST_DATA_INITIAL).await;
         assert_eq!(count.load(Ordering::Relaxed), 1);
     }
 
+    //TODO: When ArcObservable's Eq impl does not use blocking_lock anymore, this can become a tokio test
+    //TODO: This is a unit test. Move to arc_observable.rs
     #[test]
     fn arc_observable_new() {
         let observable = ArcObservable::new(TEST_DATA, TEST_EVENT_NAME);
@@ -73,6 +78,8 @@ mod tests {
         assert_eq!(observable, TEST_DATA);
     }
 
+    //TODO: This is an integration test that stretches across multiple components. Move to event_system.rs
+    //TODO: Use sender/receiver instead?
     #[tokio::test]
     async fn arc_observable_subscriber_receives_data_on_change() {
         let observable = ArcObservable::new(TEST_DATA_INITIAL, TEST_EVENT_NAME);
@@ -94,7 +101,7 @@ mod tests {
                 false,
             )
             .await;
-        assert_eq!(observable.on_change.subscriber_count().await, 1);
+        assert_eq!(observable.on_change.subscriber_count(), 1);
         assert_eq!(count.load(Ordering::Relaxed), 0);
 
         observable.set(TEST_DATA).await;
@@ -104,7 +111,7 @@ mod tests {
         assert_eq!(count.load(Ordering::Relaxed), 1);
 
         observable.on_change.unsubscribe(&uuid).await;
-        assert_eq!(observable.on_change.subscriber_count().await, 0);
+        assert_eq!(observable.on_change.subscriber_count(), 0);
 
         observable.set(TEST_DATA_INITIAL).await;
         assert_eq!(count.load(Ordering::Relaxed), 1);
