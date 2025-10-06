@@ -6,7 +6,8 @@ use lum_libs::{
             Mutex,
             mpsc::{Receiver, error::TryRecvError},
         },
-        task::{self, JoinHandle},
+        task::JoinHandle,
+        time,
     },
     uuid::Uuid,
 };
@@ -14,6 +15,7 @@ use lum_log::{error, log::warn};
 use std::{
     fmt::{self, Display, Formatter},
     sync::{Arc, Weak},
+    time::Duration,
 };
 use thiserror::Error;
 
@@ -215,8 +217,9 @@ async fn run_receive_loop<T: Clone + Send + 'static>(
             break;
         }
 
+        // We don't just yield here to avoid hugging the CPU when there's nothing else to do
         if should_yield {
-            task::yield_now().await;
+            time::sleep(Duration::from_millis(10)).await;
         }
     }
 }
@@ -313,10 +316,8 @@ impl<T: Clone + Send + 'static> Display for EventRepeater<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use super::*;
-    use lum_libs::tokio::{self, time::sleep};
+    use lum_libs::tokio::{self};
 
     const REPEATER_NAME: &str = "test_repeater";
     const EVENT_NAME: &str = "test_event";
@@ -443,7 +444,7 @@ mod tests {
             .unwrap();
 
         drop(event1);
-        sleep(Duration::from_millis(10)).await; //Give some time for the receive loop to process the closed channel
+        time::sleep(Duration::from_millis(10)).await; //Give some time for the receive loop to process the closed channel
         assert_eq!(event_repeater.attachment_count(), 0);
         assert!(!get_receive_loop_status(&event_repeater).await);
     }
@@ -479,7 +480,7 @@ mod tests {
         drop(event_repeater);
         assert_eq!(event1.subscriber_count(), 1); // event did not check for closed channels yet
 
-        sleep(Duration::from_millis(10)).await; //Give some time for the receive loop to be aborted
+        time::sleep(Duration::from_millis(10)).await; //Give some time for the receive loop to be aborted
 
         let result = event1.dispatch(()).await; // trigger the event to make the repeater notice the closed channel
         assert!(result.is_err());

@@ -47,7 +47,6 @@ impl<T: Clone + Send> Subscriber<T> {
         }
     }
 
-    //TODO: Why not just clean up subscriber if channel is closed, like in EventRepeater?
     pub async fn dispatch(&self, data: T) -> Result<(), DispatchError<T>> {
         match &self.callback {
             Callback::Channel(sender) => {
