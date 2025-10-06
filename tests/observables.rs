@@ -64,6 +64,7 @@ mod tests {
     }
 
     //TODO: When ArcObservable's Eq impl does not use blocking_lock anymore, this can become a tokio test
+    //TODO: This should check the observable and the value for equality, not the inside value
     //TODO: This is a unit test. Move to arc_observable.rs
     #[test]
     fn arc_observable_new() {

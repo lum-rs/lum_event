@@ -1,4 +1,5 @@
 use core::result::Result as CoreResult;
+use std::hash::{Hash, Hasher};
 
 use crate::{Event, subscriber::DispatchError};
 
@@ -86,3 +87,9 @@ impl<T: Clone + Send + PartialEq> PartialEq<T> for Observable<T> {
 }
 
 impl<T: Clone + Send + PartialEq> Eq for Observable<T> {}
+
+impl<T: Clone + Send + PartialEq + Hash> Hash for Observable<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.value.hash(state);
+    }
+}

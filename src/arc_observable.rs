@@ -18,7 +18,7 @@ pub enum Result<T> {
 pub struct ArcObservable<T: Send + Hash> {
     pub on_change: Event<Arc<Mutex<T>>>,
 
-    value: Arc<Mutex<T>>,
+    value: Arc<Mutex<T>>, //TODO: use parkinglot Mutex
 }
 
 impl<T: Send + Hash> ArcObservable<T> {

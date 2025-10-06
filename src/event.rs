@@ -1,6 +1,7 @@
 use std::{
     any::type_name,
     fmt::{self, Debug, Display, Formatter},
+    hash::{Hash, Hasher},
 };
 
 use lum_boxtypes::{BoxedError, PinnedBoxedFutureResult};
@@ -113,7 +114,7 @@ impl<T: Clone + Send> Event<T> {
             if let Err(err) = result {
                 if subscriber.log_on_error {
                     error!(
-                        "Event \"{}\" failed to dispatch data to subscriber {}: {}.",
+                        "Event \"{}\" failed to dispatch data to subscriber \"{}\": {}.",
                         self.name, subscriber.name, err
                     );
                 }
@@ -121,8 +122,8 @@ impl<T: Clone + Send> Event<T> {
                 if subscriber.remove_on_error {
                     if subscriber.log_on_error {
                         error!(
-                            "Subscriber {} will be unregistered from event.",
-                            subscriber.name
+                            "Event \"{}\" will remove subscriber \"{}\" due to the error.",
+                            self.name, subscriber.name
                         );
                     }
 
@@ -159,7 +160,11 @@ impl<T: Clone + Send> PartialEq<Uuid> for Event<T> {
 
 impl<T: Clone + Send> Eq for Event<T> {}
 
-//TODO: Hook into Drop?
+impl<T: Clone + Send> Hash for Event<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.uuid.hash(state);
+    }
+}
 
 impl<T: Clone + Send> Debug for Event<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
