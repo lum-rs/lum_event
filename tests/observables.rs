@@ -67,11 +67,7 @@ mod tests {
         let observable = ArcObservable::new(TEST_DATA, TEST_EVENT_NAME);
         let data = observable.get();
 
-        {
-            let lock = data.lock();
-            assert_eq!(*lock, TEST_DATA);
-        }
-
+        assert_eq!(*data, TEST_DATA);
         assert_eq!(observable, TEST_DATA);
     }
 
@@ -87,8 +83,7 @@ mod tests {
         let uuid = observable.on_change.subscribe_closure(
             TEST_CLOSURE_NAME,
             move |data| {
-                let lock = data.try_lock().unwrap();
-                assert_eq!(*lock, TEST_DATA);
+                assert_eq!(*data, TEST_DATA);
                 count_clone.fetch_add(1, Ordering::Relaxed);
                 Ok(())
             },

@@ -11,26 +11,26 @@ use crate::{Event, subscriber::DispatchError};
 #[derive(Debug)]
 pub enum Result<T> {
     Unchanged,
-    Changed(CoreResult<(), Vec<DispatchError<Arc<Mutex<T>>>>>),
+    Changed(CoreResult<(), Vec<DispatchError<Arc<T>>>>),
 }
 
 #[derive(Debug)]
-pub struct ArcObservable<T: Send + Hash> {
-    pub on_change: Event<Arc<Mutex<T>>>,
+pub struct ArcObservable<T: Send + Sync + Hash> {
+    pub on_change: Event<Arc<T>>,
 
-    value: Arc<Mutex<T>>,
+    value: Mutex<Arc<T>>,
 }
 
-impl<T: Send + Hash> ArcObservable<T> {
+impl<T: Send + Sync + Hash> ArcObservable<T> {
     pub fn new(value: T, event_name: impl Into<String>) -> Self {
         Self {
-            value: Arc::new(Mutex::new(value)),
+            value: Mutex::new(Arc::new(value)),
             on_change: Event::new(event_name),
         }
     }
 
-    pub fn get(&self) -> Arc<Mutex<T>> {
-        self.value.clone()
+    pub fn get(&self) -> Arc<T> {
+        self.value.lock().clone()
     }
 
     pub async fn set(&self, value: T) -> Result<T> {
@@ -38,6 +38,7 @@ impl<T: Send + Hash> ArcObservable<T> {
         value.hash(&mut hasher);
         let new_value_hash = hasher.finish();
 
+        let set_value: Arc<T>;
         {
             let mut current_value = self.value.lock();
             let mut hasher = DefaultHasher::new();
@@ -48,11 +49,11 @@ impl<T: Send + Hash> ArcObservable<T> {
                 return Result::Unchanged;
             }
 
-            *current_value = value;
+            set_value = Arc::new(value);
+            *current_value = set_value.clone();
         }
 
-        let value = self.value.clone();
-        let dispatch_result = self.on_change.dispatch(value).await;
+        let dispatch_result = self.on_change.dispatch(set_value).await;
         match dispatch_result {
             Ok(_) => Result::Changed(Ok(())),
             Err(errors) => Result::Changed(Err(errors)),
@@ -60,20 +61,20 @@ impl<T: Send + Hash> ArcObservable<T> {
     }
 }
 
-impl<T: Send + Hash> AsRef<Event<Arc<Mutex<T>>>> for ArcObservable<T> {
-    fn as_ref(&self) -> &Event<Arc<Mutex<T>>> {
+impl<T: Send + Sync + Hash> AsRef<Event<Arc<T>>> for ArcObservable<T> {
+    fn as_ref(&self) -> &Event<Arc<T>> {
         &self.on_change
     }
 }
 
-impl<T: Send + Hash> Hash for ArcObservable<T> {
+impl<T: Send + Sync + Hash> Hash for ArcObservable<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         let value = self.value.lock();
         value.hash(state);
     }
 }
 
-impl<T: Send + Hash> PartialEq for ArcObservable<T> {
+impl<T: Send + Sync + Hash> PartialEq for ArcObservable<T> {
     fn eq(&self, other: &Self) -> bool {
         let mut hasher = DefaultHasher::new();
         self.value.lock().hash(&mut hasher);
@@ -87,7 +88,7 @@ impl<T: Send + Hash> PartialEq for ArcObservable<T> {
     }
 }
 
-impl<T: Send + Hash> PartialEq<T> for ArcObservable<T> {
+impl<T: Send + Sync + Hash> PartialEq<T> for ArcObservable<T> {
     fn eq(&self, other: &T) -> bool {
         let mut hasher = DefaultHasher::new();
         self.value.lock().hash(&mut hasher);
@@ -101,4 +102,4 @@ impl<T: Send + Hash> PartialEq<T> for ArcObservable<T> {
     }
 }
 
-impl<T: Send + Hash> Eq for ArcObservable<T> {}
+impl<T: Send + Sync + Hash> Eq for ArcObservable<T> {}
