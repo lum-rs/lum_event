@@ -14,8 +14,9 @@ mod tests {
     static TEST_DATA: &str = "test_data";
     static TEST_DATA_INITIAL: &str = "Did not trigger";
 
-    #[tokio::test]
-    async fn observable_new() {
+    //TODO: This is a unit test. Move to observable.rs
+    #[test]
+    fn observable_new() {
         let observable = Observable::new(TEST_DATA, TEST_EVENT_NAME);
         let data = observable.get();
         let data_as_ref: &str = observable.as_ref();
@@ -25,26 +26,25 @@ mod tests {
         assert_eq!(data_as_ref, TEST_DATA);
     }
 
+    //TODO: This is an integration test that stretches across multiple components. Move to event_system.rs
+    //TODO: Use sender/receiver instead?
     #[tokio::test]
     async fn observable_subscriber_receives_data_on_change() {
         let mut observable = Observable::new(TEST_DATA_INITIAL, TEST_EVENT_NAME);
         let count = Arc::new(AtomicU8::new(0));
 
         let count_clone = count.clone();
-        let uuid = observable
-            .on_change
-            .subscribe_closure(
-                TEST_CLOSURE_NAME,
-                move |data| {
-                    assert_eq!(data, TEST_DATA);
-                    count_clone.fetch_add(1, Ordering::Relaxed);
-                    Ok(())
-                },
-                false,
-                false,
-            )
-            .await;
-        assert_eq!(observable.on_change.subscriber_count().await, 1);
+        let uuid = observable.on_change.subscribe_closure(
+            TEST_CLOSURE_NAME,
+            move |data| {
+                assert_eq!(data, TEST_DATA);
+                count_clone.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            },
+            false,
+            false,
+        );
+        assert_eq!(observable.on_change.subscriber_count(), 1);
         assert_eq!(count.load(Ordering::Relaxed), 0);
 
         observable.set(TEST_DATA).await;
@@ -53,26 +53,26 @@ mod tests {
         observable.set(TEST_DATA).await;
         assert_eq!(count.load(Ordering::Relaxed), 1);
 
-        observable.on_change.unsubscribe(&uuid).await;
-        assert_eq!(observable.on_change.subscriber_count().await, 0);
+        observable.on_change.unsubscribe(uuid);
+        assert_eq!(observable.on_change.subscriber_count(), 0);
 
         observable.set(TEST_DATA_INITIAL).await;
         assert_eq!(count.load(Ordering::Relaxed), 1);
     }
 
+    //TODO: This should check the observable and the value for equality, not the inside value
+    //TODO: This is a unit test. Move to arc_observable.rs
     #[test]
     fn arc_observable_new() {
         let observable = ArcObservable::new(TEST_DATA, TEST_EVENT_NAME);
         let data = observable.get();
 
-        {
-            let lock = data.blocking_lock();
-            assert_eq!(*lock, TEST_DATA);
-        }
-
+        assert_eq!(*data, TEST_DATA);
         assert_eq!(observable, TEST_DATA);
     }
 
+    //TODO: This is an integration test that stretches across multiple components. Move to event_system.rs
+    //TODO: Use sender/receiver instead?
     #[tokio::test]
     async fn arc_observable_subscriber_receives_data_on_change() {
         let observable = ArcObservable::new(TEST_DATA_INITIAL, TEST_EVENT_NAME);
@@ -80,21 +80,17 @@ mod tests {
         let count = Arc::new(AtomicU8::new(0));
 
         let count_clone = count.clone();
-        let uuid = observable
-            .on_change
-            .subscribe_closure(
-                TEST_CLOSURE_NAME,
-                move |data| {
-                    let lock = data.try_lock().unwrap();
-                    assert_eq!(*lock, TEST_DATA);
-                    count_clone.fetch_add(1, Ordering::Relaxed);
-                    Ok(())
-                },
-                false,
-                false,
-            )
-            .await;
-        assert_eq!(observable.on_change.subscriber_count().await, 1);
+        let uuid = observable.on_change.subscribe_closure(
+            TEST_CLOSURE_NAME,
+            move |data| {
+                assert_eq!(*data, TEST_DATA);
+                count_clone.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            },
+            false,
+            false,
+        );
+        assert_eq!(observable.on_change.subscriber_count(), 1);
         assert_eq!(count.load(Ordering::Relaxed), 0);
 
         observable.set(TEST_DATA).await;
@@ -103,8 +99,8 @@ mod tests {
         observable.set(TEST_DATA).await;
         assert_eq!(count.load(Ordering::Relaxed), 1);
 
-        observable.on_change.unsubscribe(&uuid).await;
-        assert_eq!(observable.on_change.subscriber_count().await, 0);
+        observable.on_change.unsubscribe(uuid);
+        assert_eq!(observable.on_change.subscriber_count(), 0);
 
         observable.set(TEST_DATA_INITIAL).await;
         assert_eq!(count.load(Ordering::Relaxed), 1);

@@ -1,6 +1,7 @@
 use std::{
     any::type_name,
     fmt::{self, Debug, Display, Formatter},
+    hash::{Hash, Hasher},
 };
 
 use lum_boxtypes::{BoxedError, PinnedBoxedFutureResult};
@@ -32,11 +33,11 @@ impl<T: Clone + Send> Event<T> {
         }
     }
 
-    pub async fn subscriber_count(&self) -> usize {
+    pub fn subscriber_count(&self) -> usize {
         self.subscribers.len()
     }
 
-    pub async fn subscribe_channel(
+    pub fn subscribe_channel(
         &self,
         name: impl Into<String>,
         buffer: usize,
@@ -56,7 +57,7 @@ impl<T: Clone + Send> Event<T> {
         (uuid, receiver)
     }
 
-    pub async fn subscribe_async_closure(
+    pub fn subscribe_async_closure(
         &self,
         name: impl Into<String>,
         closure: impl Fn(T) -> PinnedBoxedFutureResult<()> + Send + Sync + 'static,
@@ -75,7 +76,7 @@ impl<T: Clone + Send> Event<T> {
         uuid
     }
 
-    pub async fn subscribe_closure(
+    pub fn subscribe_closure(
         &self,
         name: impl Into<String>,
         closure: impl Fn(T) -> Result<(), BoxedError> + Send + Sync + 'static,
@@ -94,12 +95,13 @@ impl<T: Clone + Send> Event<T> {
         uuid
     }
 
-    pub async fn unsubscribe(&self, uuid: impl AsRef<Uuid>) -> bool {
+    pub fn unsubscribe(&self, uuid: impl AsRef<Uuid>) -> bool {
         let uuid = uuid.as_ref();
         let value = self.subscribers.remove(uuid);
         value.is_some()
     }
 
+    //TODO: Docs about cancelation safety. data can be dropped without reaching a channel.
     pub async fn dispatch(&self, data: T) -> Result<(), Vec<DispatchError<T>>> {
         let mut errors = Vec::new();
         let mut subscribers_to_remove = Vec::new();
@@ -111,9 +113,10 @@ impl<T: Clone + Send> Event<T> {
             let data = data.clone();
             let result = subscriber.dispatch(data).await;
             if let Err(err) = result {
+                //TODO: Remove log_on_error/remove_on_error -> provide closure for error handling?
                 if subscriber.log_on_error {
                     error!(
-                        "Event \"{}\" failed to dispatch data to subscriber {}: {}.",
+                        "Event \"{}\" failed to dispatch data to subscriber \"{}\": {}.",
                         self.name, subscriber.name, err
                     );
                 }
@@ -121,8 +124,8 @@ impl<T: Clone + Send> Event<T> {
                 if subscriber.remove_on_error {
                     if subscriber.log_on_error {
                         error!(
-                            "Subscriber {} will be unregistered from event.",
-                            subscriber.name
+                            "Event \"{}\" will remove subscriber \"{}\" due to the error.",
+                            self.name, subscriber.name
                         );
                     }
 
@@ -158,6 +161,12 @@ impl<T: Clone + Send> PartialEq<Uuid> for Event<T> {
 }
 
 impl<T: Clone + Send> Eq for Event<T> {}
+
+impl<T: Clone + Send> Hash for Event<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.uuid.hash(state);
+    }
+}
 
 impl<T: Clone + Send> Debug for Event<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
