@@ -33,6 +33,7 @@ impl<T: Send + Sync + Hash> ArcObservable<T> {
         self.value.lock().clone()
     }
 
+    //TODO: Docs about cancelation safety. value can be dropped without reaching a channel.
     pub async fn set(&self, value: T) -> Result<T> {
         let mut hasher = DefaultHasher::new();
         value.hash(&mut hasher);

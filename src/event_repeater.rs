@@ -52,7 +52,7 @@ pub struct EventRepeater<T: Clone + Send + 'static> {
     pub event: Arc<Event<T>>,
 
     attachments: Arc<DashMap<Uuid, Subscription<T>>>,
-    receive_loop: Mutex<Option<JoinHandle<()>>>,
+    receive_dispatch_loop: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl<T: Clone + Send + 'static> EventRepeater<T> {
@@ -62,8 +62,12 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         Self {
             event: Arc::new(event),
             attachments: Arc::new(DashMap::new()),
-            receive_loop: Mutex::new(None),
+            receive_dispatch_loop: Mutex::new(None),
         }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.event.name
     }
 
     pub fn attachment_count(&self) -> usize {
@@ -77,8 +81,8 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         log: bool,
     ) -> Result<(), AttachError> {
         if self.attachments.contains_key(&event.uuid) {
+            let event_repeater_name = self.name().to_string();
             let event_name = event.name.clone();
-            let event_repeater_name = self.event.name.clone();
 
             return Err(AttachError::AlreadyAttached {
                 event_repeater_name,
@@ -98,13 +102,13 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         };
 
         self.attachments.insert(event.uuid, attachment);
-        self.trigger_receive_loop();
+        self.trigger_receive_dispatch_loop();
 
         Ok(())
     }
 
     pub fn detach(&self, event: &Event<T>) -> Result<(), DetachError> {
-        let event_repeater_name = self.event.name.clone();
+        let event_repeater_name = self.name().to_string();
         let event_uuid = &event.uuid;
         let event_name = &event.name;
         let attachments = self.attachments.clone();
@@ -116,7 +120,7 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         );
 
         if result.is_ok() {
-            self.trigger_receive_loop();
+            self.trigger_receive_dispatch_loop();
         }
 
         result
@@ -124,11 +128,11 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
 
     pub fn close(self) {
         {
-            let mut receive_loop = self.receive_loop.lock();
+            let mut receive_loop = self.receive_dispatch_loop.lock();
             if let Some(handle) = receive_loop.as_ref() {
                 handle.abort();
+                *receive_loop = None;
             }
-            *receive_loop = None;
         }
 
         let uuids_to_remove = self
@@ -142,20 +146,20 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         }
     }
 
-    fn trigger_receive_loop(&self) {
-        let mut receive_loop = self.receive_loop.lock();
+    // Goal: Make sure loop is stopped if no attachments, make sure loop is running otherwise
+    fn trigger_receive_dispatch_loop(&self) {
+        let mut receive_loop = self.receive_dispatch_loop.lock();
 
-        if self.attachments.is_empty() {
-            if let Some(handle) = receive_loop.as_ref() {
-                handle.abort(); //Task could already be finished, but aborting a finished task is safe (does not alter anything)
-            }
-
+        if self.attachments.is_empty()
+            && let Some(handle) = receive_loop.as_ref()
+        {
+            handle.abort();
             *receive_loop = None;
         } else if receive_loop.is_none() || receive_loop.as_ref().unwrap().is_finished() {
             let self_event = self.event.clone();
             let attachments = self.attachments.clone();
             let handle = spawn(async move {
-                run_receive_loop(self_event, attachments).await;
+                run_receive_dispatch_loop(self_event, attachments).await;
             });
 
             *receive_loop = Some(handle);
@@ -163,7 +167,7 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
     }
 }
 
-async fn run_receive_loop<T: Clone + Send + 'static>(
+async fn run_receive_dispatch_loop<T: Clone + Send + 'static>(
     self_event: Arc<Event<T>>,
     attachments: Arc<DashMap<Uuid, Subscription<T>>>,
 ) {
@@ -215,7 +219,7 @@ async fn run_receive_loop<T: Clone + Send + 'static>(
 
         // We don't just yield here to avoid hugging the CPU when there's nothing else to do
         if should_yield {
-            time::sleep(Duration::from_millis(10)).await;
+            time::sleep(Duration::from_millis(1)).await;
         }
     }
 }
@@ -287,7 +291,7 @@ impl<T: Clone + Send + 'static> AsRef<Event<T>> for EventRepeater<T> {
 //TODO: Use async Drop when Rust supports it
 impl<T: Clone + Send + 'static> Drop for EventRepeater<T> {
     fn drop(&mut self) {
-        if let Some(handle) = self.receive_loop.get_mut().take() {
+        if let Some(handle) = self.receive_dispatch_loop.get_mut().take() {
             handle.abort();
         }
     }
@@ -325,7 +329,7 @@ mod tests {
     fn get_receive_loop_status<T: Clone + Send + 'static>(
         event_repeater: &EventRepeater<T>,
     ) -> bool {
-        let lock = event_repeater.receive_loop.lock();
+        let lock = event_repeater.receive_dispatch_loop.lock();
         match lock.as_ref() {
             Some(handle) => !handle.is_finished(),
             None => false,
