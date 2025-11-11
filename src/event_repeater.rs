@@ -312,8 +312,6 @@ impl<T: Clone + Send + 'static> Display for EventRepeater<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
-
     use super::*;
     use lum_libs::tokio::{self};
 
@@ -334,8 +332,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn display() {
+    #[tokio::test]
+    async fn display() {
         let event_repeater = EventRepeater::<()>::new(REPEATER_NAME);
         let display_str = event_repeater.to_string();
         assert_eq!(
@@ -380,8 +378,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn receive_loop_management() {
+    #[tokio::test]
+    async fn receive_loop_management() {
         let event_repeater = EventRepeater::<()>::new(REPEATER_NAME);
         assert!(!get_receive_loop_status(&event_repeater));
 
@@ -406,8 +404,8 @@ mod tests {
         assert!(!get_receive_loop_status(&event_repeater));
     }
 
-    #[test]
-    fn subscribe_and_unsubscribe_event() {
+    #[tokio::test]
+    async fn subscribe_and_unsubscribe_event() {
         let event_repeater = EventRepeater::<()>::new(REPEATER_NAME);
         let event1 = Event::new(EVENT_NAME);
         let event1 = Arc::new(event1);
@@ -425,8 +423,8 @@ mod tests {
         assert_eq!(Arc::strong_count(&event1), 1);
     }
 
-    #[test]
-    fn remove_closed_attachments() {
+    #[tokio::test]
+    async fn remove_closed_attachments() {
         let event_repeater = EventRepeater::<()>::new(REPEATER_NAME);
         let event1 = Event::new(EVENT_NAME);
         let event1 = Arc::new(event1);
@@ -436,13 +434,13 @@ mod tests {
             .unwrap();
 
         drop(event1);
-        thread::sleep(Duration::from_millis(10)); //Give some time for the receive loop to process the closed channel
+        time::sleep(Duration::from_millis(10)).await; //Give some time for the receive loop to process the closed channel
         assert_eq!(event_repeater.attachment_count(), 0);
         assert!(!get_receive_loop_status(&event_repeater));
     }
 
-    #[test]
-    fn remove_from_events_on_close() {
+    #[tokio::test]
+    async fn remove_from_events_on_close() {
         let event_repeater = EventRepeater::<()>::new(REPEATER_NAME);
         let event1 = Event::new(EVENT_NAME);
         let event1 = Arc::new(event1);
