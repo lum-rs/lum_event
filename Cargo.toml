@@ -23,6 +23,6 @@ lto = false
 
 [dependencies]
 lum_boxtypes = "0.2.2"
-lum_libs = { version = "0.2.8", features = ["dashmap", "fern", "humantime", "log", "serde", "tokio", "uuid"] }
+lum_libs = { version = "0.2.9", features = ["dashmap", "fern", "humantime", "log", "parking_lot", "serde", "tokio", "uuid"] }
 lum_log = "0.2.7"
 thiserror = "2.0.12"

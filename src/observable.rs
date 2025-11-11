@@ -28,10 +28,9 @@ impl<T: Clone + Send + PartialEq> Observable<T> {
         self.value.clone()
     }
 
+    //TODO: Docs about cancelation safety. value can be dropped without reaching a channel.
     pub async fn set(&mut self, value: T) -> Result<T> {
-        let current_value = self.value.clone();
-
-        if current_value == value {
+        if self.value == value {
             return Result::Unchanged;
         }
 
@@ -56,21 +55,9 @@ impl AsRef<str> for Observable<&str> {
     }
 }
 
-impl<T: Clone + Send + PartialEq> AsMut<T> for Observable<T> {
-    fn as_mut(&mut self) -> &mut T {
-        &mut self.value
-    }
-}
-
 impl<T: Clone + Send + PartialEq> AsRef<Event<T>> for Observable<T> {
     fn as_ref(&self) -> &Event<T> {
         &self.on_change
-    }
-}
-
-impl<T: Clone + Send + PartialEq> AsMut<Event<T>> for Observable<T> {
-    fn as_mut(&mut self) -> &mut Event<T> {
-        &mut self.on_change
     }
 }
 

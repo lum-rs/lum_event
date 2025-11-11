@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use lum_libs::tokio::sync::Mutex;
+use lum_libs::parking_lot::Mutex;
 
 use crate::{Event, subscriber::DispatchError};
 
@@ -18,7 +18,7 @@ pub enum Result<T> {
 pub struct ArcObservable<T: Send + Hash> {
     pub on_change: Event<Arc<Mutex<T>>>,
 
-    value: Arc<Mutex<T>>, //TODO: use parkinglot Mutex
+    value: Arc<Mutex<T>>,
 }
 
 impl<T: Send + Hash> ArcObservable<T> {
@@ -39,7 +39,7 @@ impl<T: Send + Hash> ArcObservable<T> {
         let new_value_hash = hasher.finish();
 
         {
-            let mut current_value = self.value.lock().await;
+            let mut current_value = self.value.lock();
             let mut hasher = DefaultHasher::new();
             current_value.hash(&mut hasher);
             let current_value_hash = hasher.finish();
@@ -66,15 +66,9 @@ impl<T: Send + Hash> AsRef<Event<Arc<Mutex<T>>>> for ArcObservable<T> {
     }
 }
 
-impl<T: Send + Hash> AsMut<Event<Arc<Mutex<T>>>> for ArcObservable<T> {
-    fn as_mut(&mut self) -> &mut Event<Arc<Mutex<T>>> {
-        &mut self.on_change
-    }
-}
-
 impl<T: Send + Hash> Hash for ArcObservable<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        let value = self.value.blocking_lock();
+        let value = self.value.lock();
         value.hash(state);
     }
 }
@@ -82,11 +76,11 @@ impl<T: Send + Hash> Hash for ArcObservable<T> {
 impl<T: Send + Hash> PartialEq for ArcObservable<T> {
     fn eq(&self, other: &Self) -> bool {
         let mut hasher = DefaultHasher::new();
-        self.value.blocking_lock().hash(&mut hasher);
+        self.value.lock().hash(&mut hasher);
         let self_hash = hasher.finish();
 
         let mut hasher = DefaultHasher::new();
-        other.value.blocking_lock().hash(&mut hasher);
+        other.value.lock().hash(&mut hasher);
         let other_hash = hasher.finish();
 
         self_hash == other_hash
@@ -96,7 +90,7 @@ impl<T: Send + Hash> PartialEq for ArcObservable<T> {
 impl<T: Send + Hash> PartialEq<T> for ArcObservable<T> {
     fn eq(&self, other: &T) -> bool {
         let mut hasher = DefaultHasher::new();
-        self.value.blocking_lock().hash(&mut hasher);
+        self.value.lock().hash(&mut hasher);
         let self_hash = hasher.finish();
 
         let mut hasher = DefaultHasher::new();

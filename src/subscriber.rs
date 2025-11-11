@@ -47,6 +47,8 @@ impl<T: Clone + Send> Subscriber<T> {
         }
     }
 
+    //TODO: For closure callback, consider spawning a task to avoid blocking. Or defining a ClosureNonBlocking variant.
+    //TODO: Docs about cancelation safety. data can be dropped without reaching a channel.
     pub async fn dispatch(&self, data: T) -> Result<(), DispatchError<T>> {
         match &self.callback {
             Callback::Channel(sender) => {
