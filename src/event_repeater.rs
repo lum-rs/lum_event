@@ -9,7 +9,7 @@ use lum_libs::{
     },
     uuid::Uuid,
 };
-use lum_log::{error, log::warn};
+use lum_log::log::warn;
 use std::{
     fmt::{self, Display, Formatter},
     sync::{Arc, Weak},
