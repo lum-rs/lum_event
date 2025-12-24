@@ -1,5 +1,8 @@
 use core::result::Result as CoreResult;
-use std::hash::{Hash, Hasher};
+use std::{
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 use crate::{Event, subscriber::DispatchError};
 
@@ -11,7 +14,7 @@ pub enum Result<T> {
 
 #[derive(Debug)]
 pub struct Observable<T: Clone + Send + PartialEq> {
-    pub on_change: Event<T>,
+    pub on_change: Arc<Event<T>>,
 
     value: T,
 }
@@ -20,7 +23,7 @@ impl<T: Clone + Send + PartialEq> Observable<T> {
     pub fn new(value: T, event_name: impl Into<String>) -> Self {
         Self {
             value,
-            on_change: Event::new(event_name),
+            on_change: Arc::new(Event::new(event_name)),
         }
     }
 
@@ -57,7 +60,7 @@ impl AsRef<str> for Observable<&str> {
 
 impl<T: Clone + Send + PartialEq> AsRef<Event<T>> for Observable<T> {
     fn as_ref(&self) -> &Event<T> {
-        &self.on_change
+        self.on_change.as_ref()
     }
 }
 

@@ -16,7 +16,7 @@ pub enum Result<T> {
 
 #[derive(Debug)]
 pub struct ArcObservable<T: Send + Sync + Hash> {
-    pub on_change: Event<Arc<T>>,
+    pub on_change: Arc<Event<Arc<T>>>,
 
     value: Mutex<Arc<T>>,
 }
@@ -25,7 +25,7 @@ impl<T: Send + Sync + Hash> ArcObservable<T> {
     pub fn new(value: T, event_name: impl Into<String>) -> Self {
         Self {
             value: Mutex::new(Arc::new(value)),
-            on_change: Event::new(event_name),
+            on_change: Arc::new(Event::new(event_name)),
         }
     }
 
@@ -64,7 +64,7 @@ impl<T: Send + Sync + Hash> ArcObservable<T> {
 
 impl<T: Send + Sync + Hash> AsRef<Event<Arc<T>>> for ArcObservable<T> {
     fn as_ref(&self) -> &Event<Arc<T>> {
-        &self.on_change
+        self.on_change.as_ref()
     }
 }
 
