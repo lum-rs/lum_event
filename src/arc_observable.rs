@@ -5,7 +5,7 @@ use std::{
 };
 
 use lum_libs::parking_lot::Mutex;
-use lum_log::log::warn;
+use lum_log::warn;
 
 use crate::{Event, subscriber::DispatchError};
 

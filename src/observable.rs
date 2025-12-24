@@ -4,8 +4,9 @@ use std::{
     sync::Arc,
 };
 
+use lum_log::warn;
+
 use crate::{Event, subscriber::DispatchError};
-use lum_log::log::warn;
 
 #[derive(Debug)]
 pub enum Result<T> {
