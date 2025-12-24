@@ -5,6 +5,7 @@ use std::{
 };
 
 use crate::{Event, subscriber::DispatchError};
+use lum_log::log::warn;
 
 #[derive(Debug)]
 pub enum Result<T> {
@@ -42,6 +43,19 @@ impl<T: Clone + Send + PartialEq> Observable<T> {
         match dispatch_result {
             Ok(_) => Result::Changed(Ok(())),
             Err(errors) => Result::Changed(Err(errors)),
+        }
+    }
+}
+
+impl<T: Clone + Send + PartialEq> Drop for Observable<T> {
+    fn drop(&mut self) {
+        let strong_count = Arc::strong_count(&self.on_change);
+        if strong_count > 1 {
+            warn!(
+                "Observable '{}' is being dropped but {} other reference(s) to its Event still exist. The Event will not be dropped. You may have a bug causing a memory leak.",
+                self.on_change.name,
+                strong_count - 1
+            );
         }
     }
 }

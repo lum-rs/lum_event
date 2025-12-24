@@ -5,6 +5,7 @@ use std::{
 };
 
 use lum_libs::parking_lot::Mutex;
+use lum_log::log::warn;
 
 use crate::{Event, subscriber::DispatchError};
 
@@ -58,6 +59,19 @@ impl<T: Send + Sync + Hash> ArcObservable<T> {
         match dispatch_result {
             Ok(_) => Result::Changed(Ok(())),
             Err(errors) => Result::Changed(Err(errors)),
+        }
+    }
+}
+
+impl<T: Send + Sync + Hash> Drop for ArcObservable<T> {
+    fn drop(&mut self) {
+        let strong_count = Arc::strong_count(&self.on_change);
+        if strong_count > 1 {
+            warn!(
+                "ArcObservable '{}' is being dropped but {} other reference(s) to its Event still exist. The Event will not be dropped. You may have a bug causing a memory leak.",
+                self.on_change.name,
+                strong_count - 1
+            );
         }
     }
 }
