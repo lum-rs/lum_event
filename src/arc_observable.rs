@@ -5,6 +5,7 @@ use std::{
 };
 
 use lum_libs::parking_lot::Mutex;
+use lum_log::warn;
 
 use crate::{Event, subscriber::DispatchError};
 
@@ -16,7 +17,7 @@ pub enum Result<T> {
 
 #[derive(Debug)]
 pub struct ArcObservable<T: Send + Sync + Hash> {
-    pub on_change: Event<Arc<T>>,
+    pub on_change: Arc<Event<Arc<T>>>,
 
     value: Mutex<Arc<T>>,
 }
@@ -25,7 +26,7 @@ impl<T: Send + Sync + Hash> ArcObservable<T> {
     pub fn new(value: T, event_name: impl Into<String>) -> Self {
         Self {
             value: Mutex::new(Arc::new(value)),
-            on_change: Event::new(event_name),
+            on_change: Arc::new(Event::new(event_name)),
         }
     }
 
@@ -62,9 +63,22 @@ impl<T: Send + Sync + Hash> ArcObservable<T> {
     }
 }
 
+impl<T: Send + Sync + Hash> Drop for ArcObservable<T> {
+    fn drop(&mut self) {
+        let strong_count = Arc::strong_count(&self.on_change);
+        if strong_count > 1 {
+            warn!(
+                "ArcObservable '{}' is being dropped but {} other reference(s) to its Event still exist. The Event will not be dropped. You may have a bug causing a memory leak.",
+                self.on_change.name,
+                strong_count - 1
+            );
+        }
+    }
+}
+
 impl<T: Send + Sync + Hash> AsRef<Event<Arc<T>>> for ArcObservable<T> {
     fn as_ref(&self) -> &Event<Arc<T>> {
-        &self.on_change
+        self.on_change.as_ref()
     }
 }
 

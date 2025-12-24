@@ -9,7 +9,7 @@ use lum_libs::{
     },
     uuid::Uuid,
 };
-use lum_log::log::warn;
+use lum_log::warn;
 use std::{
     fmt::{self, Display, Formatter},
     sync::{Arc, Weak},
@@ -246,24 +246,29 @@ fn do_detach<T: Clone + Send + 'static>(
         }
     };
 
-    if let Some(event) = attachment.event.upgrade() {
-        let removed = event.unsubscribe(attachment.subscriber_uuid);
-        if !removed && attachment.log {
-            warn!(
-                "EventRepeater {} tried to detach from event {} but the attachment was not registered as a subscriber anymore. It must have been removed already some other way.",
-                event_repeater_name, event.name
-            );
+    match attachment.event.upgrade() {
+        Some(event) => {
+            let removed = event.unsubscribe(attachment.subscriber_uuid);
+            if !removed && attachment.log {
+                warn!(
+                    "EventRepeater {} tried to detach from event {} but the attachment was not registered as a subscriber anymore. It must have been removed already some other way.",
+                    event_repeater_name, event.name
+                );
+            }
         }
-    } else if attachment.log {
-        let event_name = match event_name {
-            Some(name) => name.to_string(),
-            None => event_uuid.to_string(),
-        };
-        warn!(
-            "EventRepeater {} tried to detach from event {} but the event has already been dropped. The attachment will be dropped.",
-            event_repeater_name, event_name
-        );
-    }
+        None => {
+            if attachment.log {
+                let event_name = match event_name {
+                    Some(name) => name.to_string(),
+                    None => event_uuid.to_string(),
+                };
+                warn!(
+                    "EventRepeater {} tried to detach from event {} but the event has already been dropped. The attachment will be dropped.",
+                    event_repeater_name, event_name
+                );
+            }
+        }
+    };
 
     Ok(()) //attachment is dropped here, closing the receiver channel
 }

@@ -105,4 +105,46 @@ mod tests {
         observable.set(TEST_DATA_INITIAL).await;
         assert_eq!(count.load(Ordering::Relaxed), 1);
     }
+
+    #[test]
+    fn observable_drop_with_no_references() {
+        let observable = Observable::new(TEST_DATA, TEST_EVENT_NAME);
+        assert_eq!(Arc::strong_count(&observable.on_change), 1);
+        drop(observable); // Should drop cleanly without warnings
+    }
+
+    #[test]
+    fn observable_drop_with_extra_references() {
+        let observable = Observable::new(TEST_DATA, TEST_EVENT_NAME);
+        let arc_ref = observable.on_change.clone();
+
+        assert_eq!(Arc::strong_count(&observable.on_change), 2);
+
+        drop(observable); // Should trigger warning (Arc count > 1)
+
+        // Arc is still alive
+        assert_eq!(Arc::strong_count(&arc_ref), 1);
+        drop(arc_ref);
+    }
+
+    #[test]
+    fn arc_observable_drop_with_no_references() {
+        let observable = ArcObservable::new(TEST_DATA, TEST_EVENT_NAME);
+        assert_eq!(Arc::strong_count(&observable.on_change), 1);
+        drop(observable); // Should drop cleanly without warnings
+    }
+
+    #[test]
+    fn arc_observable_drop_with_extra_references() {
+        let observable = ArcObservable::new(TEST_DATA, TEST_EVENT_NAME);
+        let arc_ref = observable.on_change.clone();
+
+        assert_eq!(Arc::strong_count(&observable.on_change), 2);
+
+        drop(observable); // Should trigger warning (Arc count > 1)
+
+        // Arc is still alive
+        assert_eq!(Arc::strong_count(&arc_ref), 1);
+        drop(arc_ref);
+    }
 }
