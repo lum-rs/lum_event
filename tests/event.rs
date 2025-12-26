@@ -86,7 +86,7 @@ mod tests {
         let count = Arc::new(AtomicU8::new(0));
 
         let count_clone = count.clone();
-        let uuid = event.subscribe_closure(
+        let id = event.subscribe_closure(
             TEST_CLOSURE_NAME,
             move |_data| {
                 count_clone.fetch_add(1, Ordering::Relaxed);
@@ -105,7 +105,7 @@ mod tests {
         event.dispatch(TEST_DATA.to_string()).await.unwrap();
         assert_eq!(count.load(Ordering::Relaxed), 2);
 
-        let remove_result = event.unsubscribe(uuid);
+        let remove_result = event.unsubscribe(id);
         assert!(remove_result);
         assert_eq!(event.subscriber_count(), 0);
 
@@ -137,8 +137,6 @@ mod tests {
         assert_ne!(event1, event2);
         assert_eq!(event1, event1);
         assert_eq!(event2, event2);
-        assert_eq!(event1, event1.uuid);
-        assert_eq!(event2, event2.uuid);
     }
 
     //TODO: This is a unit test. Move to event.rs

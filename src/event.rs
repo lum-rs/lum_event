@@ -8,27 +8,29 @@ use lum_boxtypes::{BoxedError, PinnedBoxedFutureResult};
 use lum_libs::{
     dashmap::DashMap,
     tokio::sync::mpsc::{Receiver, channel},
-    uuid::Uuid,
 };
 use lum_log::error;
 
 use crate::{
     Subscriber,
+    id::get_unique_id,
     subscriber::{Callback, DispatchError},
 };
 
 pub struct Event<T: Clone + Send> {
     pub name: String,
-    pub uuid: Uuid,
+    pub id: u64,
 
-    subscribers: DashMap<Uuid, Subscriber<T>>,
+    subscribers: DashMap<u64, Subscriber<T>>,
 }
 
 impl<T: Clone + Send> Event<T> {
     pub fn new(name: impl Into<String>) -> Self {
+        let id = get_unique_id();
+
         Self {
             name: name.into(),
-            uuid: Uuid::new_v4(),
+            id,
             subscribers: DashMap::new(),
         }
     }
@@ -43,18 +45,20 @@ impl<T: Clone + Send> Event<T> {
         buffer: usize,
         log_on_error: bool,
         remove_on_error: bool,
-    ) -> (Uuid, Receiver<T>) {
+    ) -> (u64, Receiver<T>) {
         let (sender, receiver) = channel(buffer);
+
         let subscriber = Subscriber::new(
             name,
             log_on_error,
             remove_on_error,
             Callback::Channel(sender),
         );
-        let uuid = subscriber.uuid;
-        self.subscribers.insert(uuid, subscriber);
 
-        (uuid, receiver)
+        let id = subscriber.id;
+        self.subscribers.insert(id, subscriber);
+
+        (id, receiver)
     }
 
     pub fn subscribe_async_closure(
@@ -63,17 +67,18 @@ impl<T: Clone + Send> Event<T> {
         closure: impl Fn(T) -> PinnedBoxedFutureResult<()> + Send + Sync + 'static,
         log_on_error: bool,
         remove_on_error: bool,
-    ) -> Uuid {
+    ) -> u64 {
         let subscriber = Subscriber::new(
             name,
             log_on_error,
             remove_on_error,
             Callback::AsyncClosure(Box::new(closure)),
         );
-        let uuid = subscriber.uuid;
-        self.subscribers.insert(uuid, subscriber);
 
-        uuid
+        let id = subscriber.id;
+        self.subscribers.insert(id, subscriber);
+
+        id
     }
 
     pub fn subscribe_closure(
@@ -82,22 +87,22 @@ impl<T: Clone + Send> Event<T> {
         closure: impl Fn(T) -> Result<(), BoxedError> + Send + Sync + 'static,
         log_on_error: bool,
         remove_on_error: bool,
-    ) -> Uuid {
+    ) -> u64 {
         let subscriber = Subscriber::new(
             name,
             log_on_error,
             remove_on_error,
             Callback::Closure(Box::new(closure)),
         );
-        let uuid = subscriber.uuid;
-        self.subscribers.insert(uuid, subscriber);
 
-        uuid
+        let id = subscriber.id;
+        self.subscribers.insert(id, subscriber);
+
+        id
     }
 
-    pub fn unsubscribe(&self, uuid: impl AsRef<Uuid>) -> bool {
-        let uuid = uuid.as_ref();
-        let value = self.subscribers.remove(uuid);
+    pub fn unsubscribe(&self, id: u64) -> bool {
+        let value = self.subscribers.remove(&id);
         value.is_some()
     }
 
@@ -107,7 +112,7 @@ impl<T: Clone + Send> Event<T> {
         let mut subscribers_to_remove = Vec::new();
 
         for ref_multi in self.subscribers.iter() {
-            let uuid = *ref_multi.key();
+            let id = *ref_multi.key();
             let subscriber = ref_multi.value();
 
             let data = data.clone();
@@ -129,15 +134,15 @@ impl<T: Clone + Send> Event<T> {
                         );
                     }
 
-                    subscribers_to_remove.push(uuid);
+                    subscribers_to_remove.push(id);
                 }
 
                 errors.push(err);
             }
         }
 
-        for uuid in subscribers_to_remove.into_iter() {
-            self.subscribers.remove(&uuid);
+        for id in subscribers_to_remove.into_iter() {
+            self.subscribers.remove(&id);
         }
 
         if !errors.is_empty() {
@@ -150,21 +155,14 @@ impl<T: Clone + Send> Event<T> {
 
 impl<T: Clone + Send> PartialEq for Event<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.uuid == other.uuid
+        self.id == other.id
     }
 }
-
-impl<T: Clone + Send> PartialEq<Uuid> for Event<T> {
-    fn eq(&self, other: &Uuid) -> bool {
-        self.uuid == *other
-    }
-}
-
 impl<T: Clone + Send> Eq for Event<T> {}
 
 impl<T: Clone + Send> Hash for Event<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.uuid.hash(state);
+        self.id.hash(state);
     }
 }
 
@@ -173,7 +171,7 @@ impl<T: Clone + Send> Debug for Event<T> {
         let sub_count = self.subscribers.len();
 
         f.debug_struct(type_name::<Self>())
-            .field("uuid", &self.uuid)
+            .field("id", &self.id)
             .field("name", &self.name)
             .field("subscribers", &sub_count)
             .finish()

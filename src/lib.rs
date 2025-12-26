@@ -1,6 +1,7 @@
 pub mod arc_observable;
 pub mod event;
 pub mod event_repeater;
+pub mod id;
 pub mod observable;
 pub mod subscriber;
 

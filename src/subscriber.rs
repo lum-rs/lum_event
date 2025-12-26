@@ -1,9 +1,8 @@
 use lum_boxtypes::{BoxedError, BoxedErrorResult, PinnedBoxedFutureResult};
-use lum_libs::{
-    tokio::sync::mpsc::{Sender, error::SendError},
-    uuid::Uuid,
-};
+use lum_libs::tokio::sync::mpsc::{Sender, error::SendError};
 use thiserror::Error;
+
+use crate::id::get_unique_id;
 
 pub enum Callback<T> {
     Channel(Sender<T>),
@@ -28,7 +27,7 @@ pub struct Subscriber<T: Clone + Send> {
     pub log_on_error: bool,
     pub remove_on_error: bool,
     pub callback: Callback<T>,
-    pub uuid: Uuid,
+    pub id: u64,
 }
 
 impl<T: Clone + Send> Subscriber<T> {
@@ -38,12 +37,13 @@ impl<T: Clone + Send> Subscriber<T> {
         remove_on_error: bool,
         callback: Callback<T>,
     ) -> Self {
+        let id = get_unique_id();
         Self {
             name: name.into(),
             log_on_error,
             remove_on_error,
             callback,
-            uuid: Uuid::new_v4(),
+            id,
         }
     }
 
@@ -64,13 +64,7 @@ impl<T: Clone + Send> Subscriber<T> {
 
 impl<T: Clone + Send> PartialEq for Subscriber<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.uuid == other.uuid
-    }
-}
-
-impl<T: Clone + Send> PartialEq<Uuid> for Subscriber<T> {
-    fn eq(&self, other: &Uuid) -> bool {
-        self.uuid == *other
+        self.id == other.id
     }
 }
 
