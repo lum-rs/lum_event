@@ -34,7 +34,7 @@ mod tests {
         let count = Arc::new(AtomicU8::new(0));
 
         let count_clone = count.clone();
-        let uuid = observable.on_change.subscribe_closure(
+        let id = observable.on_change.subscribe_closure(
             TEST_CLOSURE_NAME,
             move |data| {
                 assert_eq!(data, TEST_DATA);
@@ -53,7 +53,7 @@ mod tests {
         observable.set(TEST_DATA).await;
         assert_eq!(count.load(Ordering::Relaxed), 1);
 
-        observable.on_change.unsubscribe(uuid);
+        observable.on_change.unsubscribe(id);
         assert_eq!(observable.on_change.subscriber_count(), 0);
 
         observable.set(TEST_DATA_INITIAL).await;
@@ -80,7 +80,7 @@ mod tests {
         let count = Arc::new(AtomicU8::new(0));
 
         let count_clone = count.clone();
-        let uuid = observable.on_change.subscribe_closure(
+        let id = observable.on_change.subscribe_closure(
             TEST_CLOSURE_NAME,
             move |data| {
                 assert_eq!(*data, TEST_DATA);
@@ -99,7 +99,7 @@ mod tests {
         observable.set(TEST_DATA).await;
         assert_eq!(count.load(Ordering::Relaxed), 1);
 
-        observable.on_change.unsubscribe(uuid);
+        observable.on_change.unsubscribe(id);
         assert_eq!(observable.on_change.subscriber_count(), 0);
 
         observable.set(TEST_DATA_INITIAL).await;

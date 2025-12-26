@@ -7,7 +7,6 @@ use lum_libs::{
         task::JoinHandle,
         time,
     },
-    uuid::Uuid,
 };
 use lum_log::warn;
 use std::{
@@ -21,7 +20,7 @@ use super::Event;
 
 struct Subscription<T: Clone + Send> {
     event: Weak<Event<T>>,
-    subscriber_uuid: Uuid,
+    subscriber_id: u64,
     receiver: Receiver<T>,
     log: bool,
 }
@@ -51,7 +50,7 @@ pub enum DetachError {
 pub struct EventRepeater<T: Clone + Send + 'static> {
     pub event: Arc<Event<T>>,
 
-    attachments: Arc<DashMap<Uuid, Subscription<T>>>,
+    attachments: Arc<DashMap<u64, Subscription<T>>>,
     receive_dispatch_loop: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -80,7 +79,7 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         buffer: usize,
         log: bool,
     ) -> Result<(), AttachError> {
-        if self.attachments.contains_key(&event.uuid) {
+        if self.attachments.contains_key(&event.id) {
             let event_repeater_name = self.name().to_string();
             let event_name = event.name.clone();
 
@@ -90,18 +89,18 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
             });
         }
 
-        let (subscriber_uuid, receiver) =
+        let (subscriber_id, receiver) =
             event.subscribe_channel(&self.event.name, buffer, log, true); // we always want the repeater to be removed when the channel is closed
 
         let event_weak = Arc::downgrade(&event);
         let attachment = Subscription {
             event: event_weak,
-            subscriber_uuid,
+            subscriber_id,
             receiver,
             log,
         };
 
-        self.attachments.insert(event.uuid, attachment);
+        self.attachments.insert(event.id, attachment);
         self.trigger_receive_dispatch_loop();
 
         Ok(())
@@ -109,12 +108,12 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
 
     pub fn detach(&self, event: &Event<T>) -> Result<(), DetachError> {
         let event_repeater_name = self.name().to_string();
-        let event_uuid = &event.uuid;
+        let event_id = event.id;
         let event_name = &event.name;
         let attachments = self.attachments.clone();
         let result = do_detach(
             &event_repeater_name,
-            event_uuid,
+            event_id,
             Some(event_name),
             attachments,
         );
@@ -135,14 +134,14 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
             }
         }
 
-        let uuids_to_remove = self
+        let ids_to_remove = self
             .attachments
             .iter()
             .map(|entry| *entry.key())
             .collect::<Vec<_>>();
 
-        for uuid in uuids_to_remove.into_iter() {
-            let _ = do_detach(&self.event.name, &uuid, None, self.attachments.clone());
+        for id in ids_to_remove.into_iter() {
+            let _ = do_detach(&self.event.name, id, None, self.attachments.clone());
         }
     }
 
@@ -169,7 +168,7 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
 
 async fn run_receive_dispatch_loop<T: Clone + Send + 'static>(
     self_event: Arc<Event<T>>,
-    attachments: Arc<DashMap<Uuid, Subscription<T>>>,
+    attachments: Arc<DashMap<u64, Subscription<T>>>,
 ) {
     let event_repeater_name = self_event.name.clone();
 
@@ -177,7 +176,7 @@ async fn run_receive_dispatch_loop<T: Clone + Send + 'static>(
         let mut data_to_dispatch = Vec::new();
         let mut attachments_to_remove = Vec::new();
         for mut entry in attachments.iter_mut() {
-            let event_uuid = *entry.key();
+            let event_id = *entry.key();
             let attachment = entry.value_mut();
 
             // Drain all available messages from the attachment's channel
@@ -189,10 +188,10 @@ async fn run_receive_dispatch_loop<T: Clone + Send + 'static>(
                         if attachment.log {
                             warn!(
                                 "EventRepeater {}'s attachment {} closed its channel. It will be unregistered.",
-                                event_repeater_name, attachment.subscriber_uuid
+                                event_repeater_name, attachment.subscriber_id
                             );
                         }
-                        attachments_to_remove.push(event_uuid);
+                        attachments_to_remove.push(event_id);
                         break;
                     }
                 };
@@ -209,8 +208,8 @@ async fn run_receive_dispatch_loop<T: Clone + Send + 'static>(
             let _ = self_event.dispatch(data).await;
         }
 
-        for uuid in attachments_to_remove.into_iter() {
-            let _ = do_detach(&event_repeater_name, &uuid, None, attachments.clone());
+        for id in attachments_to_remove.into_iter() {
+            let _ = do_detach(&event_repeater_name, id, None, attachments.clone());
         }
 
         if attachments.is_empty() {
@@ -226,16 +225,16 @@ async fn run_receive_dispatch_loop<T: Clone + Send + 'static>(
 
 fn do_detach<T: Clone + Send + 'static>(
     event_repeater_name: &str,
-    event_uuid: &Uuid,
+    event_id: u64,
     event_name: Option<&str>,
-    attachments: Arc<DashMap<Uuid, Subscription<T>>>,
+    attachments: Arc<DashMap<u64, Subscription<T>>>,
 ) -> Result<(), DetachError> {
-    let attachment = match attachments.remove(event_uuid) {
+    let attachment = match attachments.remove(&event_id) {
         Some((_, attachment)) => attachment,
         None => {
             let event_name = match event_name {
                 Some(name) => name.to_string(),
-                None => event_uuid.to_string(),
+                None => event_id.to_string(),
             };
             let event_repeater_name = event_repeater_name.to_string();
 
@@ -248,7 +247,7 @@ fn do_detach<T: Clone + Send + 'static>(
 
     match attachment.event.upgrade() {
         Some(event) => {
-            let removed = event.unsubscribe(attachment.subscriber_uuid);
+            let removed = event.unsubscribe(attachment.subscriber_id);
             if !removed && attachment.log {
                 warn!(
                     "EventRepeater {} tried to detach from event {} but the attachment was not registered as a subscriber anymore. It must have been removed already some other way.",
@@ -260,7 +259,7 @@ fn do_detach<T: Clone + Send + 'static>(
             if attachment.log {
                 let event_name = match event_name {
                     Some(name) => name.to_string(),
-                    None => event_uuid.to_string(),
+                    None => event_id.to_string(),
                 };
                 warn!(
                     "EventRepeater {} tried to detach from event {} but the event has already been dropped. The attachment will be dropped.",
@@ -279,9 +278,9 @@ impl<T: Clone + Send + 'static> PartialEq for EventRepeater<T> {
     }
 }
 
-impl<T: Clone + Send + 'static> PartialEq<Uuid> for EventRepeater<T> {
-    fn eq(&self, other: &Uuid) -> bool {
-        self.event.uuid == *other
+impl<T: Clone + Send + 'static> PartialEq<u64> for EventRepeater<T> {
+    fn eq(&self, other: &u64) -> bool {
+        self.event.id == *other
     }
 }
 
