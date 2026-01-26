@@ -22,7 +22,7 @@ opt-level = 0
 lto = false
 
 [dependencies]
-lum_boxtypes = "0.2.2"
+lum_boxtypes = "0.2.3"
 lum_libs = { version = "0.2.10", features = ["dashmap", "humantime", "log", "parking_lot", "serde", "tokio"] }
 lum_log = "0.3.0"
 thiserror = "2.0.17"
