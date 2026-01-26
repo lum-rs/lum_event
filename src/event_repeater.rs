@@ -47,6 +47,7 @@ pub enum DetachError {
     },
 }
 
+// TODO: Refactor to use EventHandle instead of Arc<Event<T>>
 pub struct EventRepeater<T: Clone + Send + 'static> {
     pub event: Arc<Event<T>>,
 
