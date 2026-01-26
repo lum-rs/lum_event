@@ -124,12 +124,12 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         event_handle.try_with_event(|event_inner| {
             let event_repeater_name = self.name().to_string();
             let event_id = event_inner.id();
-            let event_name = event_inner.name().to_string();
+            let event_name = event_inner.name();
             let attachments = self.attachments.clone();
             let result = do_detach(
                 &event_repeater_name,
                 event_id,
-                Some(&event_name),
+                Some(event_name),
                 attachments,
             );
 
@@ -236,29 +236,28 @@ async fn run_receive_dispatch_loop<T: Clone + Send + 'static>(
             break;
         }
 
-        // We don't just yield_now() here, as this hugs CPU when there's nothing else to do
-        // we use sleep to avoid hugging the CPU and await to remove this task from the ready queue
+        //We use sleep instead of yield_now() to avoid spinning when there's no data,
+        // giving other tasks more time to run
         if should_yield {
             time::sleep(Duration::from_millis(1)).await;
         }
     }
 }
 
-// TODO: Find out if we can prevent cases where event_name is None now due to EventHandle
 fn do_detach<T: Clone + Send + 'static>(
     event_repeater_name: &str,
     event_id: u64,
     event_name: Option<&str>,
     attachments: Arc<DashMap<u64, Subscription<T>>>,
 ) -> Result<(), DetachError> {
+    let event_repeater_name = event_repeater_name.to_string();
+
     let attachment = match attachments.remove(&event_id) {
         Some((_, attachment)) => attachment,
         None => {
-            let event_name = match event_name {
-                Some(name) => name.to_string(),
-                None => event_id.to_string(),
-            };
-            let event_repeater_name = event_repeater_name.to_string();
+            let event_name = event_name
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| event_id.to_string());
 
             return Err(DetachError::NotAttached {
                 event_repeater_name,
@@ -270,8 +269,9 @@ fn do_detach<T: Clone + Send + 'static>(
     let result = attachment.event.try_with_event(|event_inner| {
         let removed = event_inner.unsubscribe(attachment.subscriber_id);
         if !removed && attachment.log {
-            let event_name = event_inner.name();
-            warn!(
+        let event_name = event_inner.name();
+
+        warn!(
                 "EventRepeater {} tried to detach from event {} but the EventRepeater's attachment was not registered as a subscriber on the Event anymore. It must have been removed already some other way.",
                 event_repeater_name, event_name
             );
@@ -279,13 +279,9 @@ fn do_detach<T: Clone + Send + 'static>(
     });
 
     if result.is_err() && attachment.log {
-        let event_name = match event_name {
-            Some(name) => name.to_string(),
-            None => event_id.to_string(),
-        };
         warn!(
-            "EventRepeater {} tried to detach from event {} but the event has already been dropped. The attachment will just be removed from the EventRepeater's list of attachments.",
-            event_repeater_name, event_name
+            "EventRepeater {} tried to detach from unknown event with ID {} but the event has already been dropped. The attachment will just be removed from the EventRepeater's list of attachments.",
+            event_repeater_name, event_id
         );
     }
 
@@ -393,14 +389,14 @@ mod tests {
             format!("EventRepeater {} (2 subscriptions)", REPEATER_NAME)
         );
 
-        event_repeater.detach(&event2_handle).unwrap();
+        event_repeater.detach(event2_handle).unwrap();
         let display_str = event_repeater.to_string();
         assert_eq!(
             display_str,
             format!("EventRepeater {} (1 subscription)", REPEATER_NAME)
         );
 
-        event_repeater.detach(&event1_handle).unwrap();
+        event_repeater.detach(event1_handle).unwrap();
         let display_str = event_repeater.to_string();
         assert_eq!(
             display_str,
@@ -427,10 +423,10 @@ mod tests {
             .unwrap();
         assert!(get_receive_loop_status(&event_repeater));
 
-        event_repeater.detach(&event1_handle).unwrap();
+        event_repeater.detach(event1_handle).unwrap();
         assert!(get_receive_loop_status(&event_repeater));
 
-        event_repeater.detach(&event2_handle).unwrap();
+        event_repeater.detach(event2_handle).unwrap();
         assert!(!get_receive_loop_status(&event_repeater));
     }
 
@@ -446,7 +442,7 @@ mod tests {
         assert_eq!(event_repeater.attachment_count(), 1);
         assert_eq!(event1.subscriber_count(), 1);
 
-        event_repeater.detach(&event1_handle).unwrap();
+        event_repeater.detach(event1_handle).unwrap();
         assert_eq!(event_repeater.attachment_count(), 0);
         assert_eq!(event1.subscriber_count(), 0);
     }

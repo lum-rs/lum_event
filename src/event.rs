@@ -21,9 +21,9 @@ use crate::{
 };
 
 pub struct EventInner<T: Clone + Send> {
-    pub id: u64,
-    pub name: String,
-    pub subscribers: DashMap<u64, Subscriber<T>>,
+    id: u64,
+    name: String,
+    subscribers: DashMap<u64, Subscriber<T>>,
 }
 
 impl<T: Clone + Send> EventInner<T> {
@@ -326,12 +326,6 @@ impl<T: Clone + Send> From<&mut Event<T>> for EventHandle<T> {
     }
 }
 
-impl<T: Clone + Send> From<&Self> for EventHandle<T> {
-    fn from(event_handle: &Self) -> Self {
-        event_handle.clone()
-    }
-}
-
 impl<T: Clone + Send> AsRef<EventHandle<T>> for EventHandle<T> {
     fn as_ref(&self) -> &EventHandle<T> {
         self
@@ -352,8 +346,6 @@ impl<T: Clone + Send> PartialEq<EventInner<T>> for EventHandle<T> {
         }
     }
 }
-
-impl<T: Clone + Send> Eq for EventHandle<T> {}
 
 impl<T: Clone + Send> Debug for EventHandle<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -415,8 +407,6 @@ impl<T: Clone + Send> PartialEq for Event<T> {
         self.inner == other.inner
     }
 }
-
-impl<T: Clone + Send> Eq for Event<T> {}
 
 impl<T: Clone + Send> PartialEq<EventHandle<T>> for Event<T> {
     fn eq(&self, other: &EventHandle<T>) -> bool {
