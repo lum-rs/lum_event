@@ -24,7 +24,7 @@ mod tests {
     fn event_new() {
         let event = Event::<String>::new(TEST_EVENT_NAME);
 
-        assert_eq!(event.name, TEST_EVENT_NAME);
+        assert_eq!(event.name(), TEST_EVENT_NAME);
         assert_eq!(event.subscriber_count(), 0);
     }
 

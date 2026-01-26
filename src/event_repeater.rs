@@ -66,7 +66,7 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
     }
 
     pub fn name(&self) -> &str {
-        &self.event.name
+        self.event.name()
     }
 
     pub fn attachment_count(&self) -> usize {
@@ -79,9 +79,9 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         buffer: usize,
         log: bool,
     ) -> Result<(), AttachError> {
-        if self.attachments.contains_key(&event.id) {
+        if self.attachments.contains_key(&event.id()) {
             let event_repeater_name = self.name().to_string();
-            let event_name = event.name.clone();
+            let event_name = event.name().to_string();
 
             return Err(AttachError::AlreadyAttached {
                 event_repeater_name,
@@ -90,7 +90,7 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         }
 
         let (subscriber_id, receiver) =
-            event.subscribe_channel(&self.event.name, buffer, log, true); // we always want the repeater to be removed when the channel is closed
+            event.subscribe_channel(self.event.name(), buffer, log, true); // we always want the repeater to be removed when the channel is closed
 
         let event_weak = Arc::downgrade(&event);
         let attachment = Subscription {
@@ -100,7 +100,7 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
             log,
         };
 
-        self.attachments.insert(event.id, attachment);
+        self.attachments.insert(event.id(), attachment);
         self.trigger_receive_dispatch_loop();
 
         Ok(())
@@ -108,8 +108,8 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
 
     pub fn detach(&self, event: &Event<T>) -> Result<(), DetachError> {
         let event_repeater_name = self.name().to_string();
-        let event_id = event.id;
-        let event_name = &event.name;
+        let event_id = event.id();
+        let event_name = event.name();
         let attachments = self.attachments.clone();
         let result = do_detach(
             &event_repeater_name,
@@ -141,7 +141,7 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
             .collect::<Vec<_>>();
 
         for id in ids_to_remove.into_iter() {
-            let _ = do_detach(&self.event.name, id, None, self.attachments.clone());
+            let _ = do_detach(self.event.name(), id, None, self.attachments.clone());
         }
     }
 
@@ -170,7 +170,7 @@ async fn run_receive_dispatch_loop<T: Clone + Send + 'static>(
     self_event: Arc<Event<T>>,
     attachments: Arc<DashMap<u64, Subscription<T>>>,
 ) {
-    let event_repeater_name = self_event.name.clone();
+    let event_repeater_name = self_event.name();
 
     loop {
         let mut data_to_dispatch = Vec::new();
@@ -209,7 +209,7 @@ async fn run_receive_dispatch_loop<T: Clone + Send + 'static>(
         }
 
         for id in attachments_to_remove.into_iter() {
-            let _ = do_detach(&event_repeater_name, id, None, attachments.clone());
+            let _ = do_detach(event_repeater_name, id, None, attachments.clone());
         }
 
         if attachments.is_empty() {
@@ -251,7 +251,8 @@ fn do_detach<T: Clone + Send + 'static>(
             if !removed && attachment.log {
                 warn!(
                     "EventRepeater {} tried to detach from event {} but the attachment was not registered as a subscriber anymore. It must have been removed already some other way.",
-                    event_repeater_name, event.name
+                    event_repeater_name,
+                    event.name()
                 );
             }
         }
@@ -280,7 +281,7 @@ impl<T: Clone + Send + 'static> PartialEq for EventRepeater<T> {
 
 impl<T: Clone + Send + 'static> PartialEq<u64> for EventRepeater<T> {
     fn eq(&self, other: &u64) -> bool {
-        self.event.id == *other
+        self.event.id() == *other
     }
 }
 
@@ -313,7 +314,9 @@ impl<T: Clone + Send + 'static> Display for EventRepeater<T> {
         write!(
             f,
             "EventRepeater {} ({} {})",
-            self.event.name, sub_count, sub_word
+            self.event.name(),
+            sub_count,
+            sub_word
         )
     }
 }

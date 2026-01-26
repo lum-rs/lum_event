@@ -18,21 +18,29 @@ use crate::{
 };
 
 pub struct Event<T: Clone + Send> {
-    pub name: String,
-    pub id: u64,
-
+    id: u64,
+    name: String,
     subscribers: DashMap<u64, Subscriber<T>>,
 }
 
 impl<T: Clone + Send> Event<T> {
     pub fn new(name: impl Into<String>) -> Self {
         let id = get_unique_id();
+        let name = name.into();
 
         Self {
-            name: name.into(),
             id,
+            name,
             subscribers: DashMap::new(),
         }
+    }
+
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub fn subscriber_count(&self) -> usize {
@@ -55,7 +63,7 @@ impl<T: Clone + Send> Event<T> {
             Callback::Channel(sender),
         );
 
-        let id = subscriber.id;
+        let id = subscriber.id();
         self.subscribers.insert(id, subscriber);
 
         (id, receiver)
@@ -75,7 +83,7 @@ impl<T: Clone + Send> Event<T> {
             Callback::AsyncClosure(Box::new(closure)),
         );
 
-        let id = subscriber.id;
+        let id = subscriber.id();
         self.subscribers.insert(id, subscriber);
 
         id
@@ -95,7 +103,7 @@ impl<T: Clone + Send> Event<T> {
             Callback::Closure(Box::new(closure)),
         );
 
-        let id = subscriber.id;
+        let id = subscriber.id();
         self.subscribers.insert(id, subscriber);
 
         id
@@ -119,18 +127,21 @@ impl<T: Clone + Send> Event<T> {
             let result = subscriber.dispatch(data).await;
             if let Err(err) = result {
                 //TODO: Remove log_on_error/remove_on_error -> provide closure for error handling?
-                if subscriber.log_on_error {
+                if subscriber.log_on_error() {
                     error!(
                         "Event \"{}\" failed to dispatch data to subscriber \"{}\": {}.",
-                        self.name, subscriber.name, err
+                        self.name,
+                        subscriber.name(),
+                        err
                     );
                 }
 
-                if subscriber.remove_on_error {
-                    if subscriber.log_on_error {
+                if subscriber.remove_on_error() {
+                    if subscriber.log_on_error() {
                         error!(
                             "Event \"{}\" will remove subscriber \"{}\" due to the error.",
-                            self.name, subscriber.name
+                            self.name,
+                            subscriber.name()
                         );
                     }
 

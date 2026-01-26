@@ -69,7 +69,7 @@ impl<T: Send + Sync + Hash> Drop for ArcObservable<T> {
         if strong_count > 1 {
             warn!(
                 "ArcObservable '{}' is being dropped but {} other reference(s) to its Event still exist. The Event will not be dropped. You may have a bug causing a memory leak.",
-                self.on_change.name,
+                self.on_change.name(),
                 strong_count - 1
             );
         }
