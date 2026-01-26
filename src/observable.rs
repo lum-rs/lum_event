@@ -1,10 +1,5 @@
 use core::result::Result as CoreResult;
-use std::{
-    hash::{Hash, Hasher},
-    sync::Arc,
-};
-
-use lum_log::warn;
+use std::hash::{Hash, Hasher};
 
 use crate::{Event, subscriber::DispatchError};
 
@@ -16,7 +11,7 @@ pub enum Result<T> {
 
 #[derive(Debug)]
 pub struct Observable<T: Clone + Send + PartialEq> {
-    pub on_change: Arc<Event<T>>,
+    pub on_change: Event<T>,
 
     value: T,
 }
@@ -25,7 +20,7 @@ impl<T: Clone + Send + PartialEq> Observable<T> {
     pub fn new(value: T, event_name: impl Into<String>) -> Self {
         Self {
             value,
-            on_change: Arc::new(Event::new(event_name)),
+            on_change: Event::new(event_name),
         }
     }
 
@@ -48,19 +43,6 @@ impl<T: Clone + Send + PartialEq> Observable<T> {
     }
 }
 
-impl<T: Clone + Send + PartialEq> Drop for Observable<T> {
-    fn drop(&mut self) {
-        let strong_count = Arc::strong_count(&self.on_change);
-        if strong_count > 1 {
-            warn!(
-                "Observable '{}' is being dropped but {} other reference(s) to its Event still exist. The Event will not be dropped. You may have a bug causing a memory leak.",
-                self.on_change.name(),
-                strong_count - 1
-            );
-        }
-    }
-}
-
 impl<T: Clone + Send + PartialEq> AsRef<T> for Observable<T> {
     fn as_ref(&self) -> &T {
         &self.value
@@ -75,7 +57,7 @@ impl AsRef<str> for Observable<&str> {
 
 impl<T: Clone + Send + PartialEq> AsRef<Event<T>> for Observable<T> {
     fn as_ref(&self) -> &Event<T> {
-        self.on_change.as_ref()
+        &self.on_change
     }
 }
 
