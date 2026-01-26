@@ -8,7 +8,7 @@ use lum_libs::{
         time,
     },
 };
-use lum_log::{warn};
+use lum_log::warn;
 use std::{
     fmt::{self, Display, Formatter},
     sync::Arc,
@@ -84,11 +84,13 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
 
     pub fn attach(
         &self,
-        event: EventHandle<T>,
+        event_handle: impl Into<EventHandle<T>>,
         buffer: usize,
         log: bool,
     ) -> Result<(), AttachError> {
-        event.try_with_event(|event_inner| {
+        let event_handle = event_handle.into();
+
+        event_handle.try_with_event(|event_inner| {
             let event_id = event_inner.id();
 
             if self.attachments.contains_key(&event_id) {
@@ -104,7 +106,7 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
                 event_inner.subscribe_channel(self.event.name(), buffer, log, true);
 
             let attachment = Subscription {
-                event: event.clone(),
+                event: event_handle.clone(),
                 subscriber_id,
                 receiver,
                 log,
@@ -117,8 +119,10 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         })?
     }
 
-    pub fn detach(&self, event: &EventHandle<T>) -> Result<(), DetachError> {
-        event.try_with_event(|event_inner| {
+    pub fn detach(&self, event_handle: impl Into<EventHandle<T>>) -> Result<(), DetachError> {
+        let event_handle = event_handle.into();
+
+        event_handle.try_with_event(|event_inner| {
             let event_repeater_name = self.name().to_string();
             let event_id = event_inner.id();
             let event_name = event_inner.name().to_string();

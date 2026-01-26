@@ -308,6 +308,36 @@ impl<T: Clone + Send> EventHandle<T> {
     }
 }
 
+impl<T: Clone + Send> From<Event<T>> for EventHandle<T> {
+    fn from(event: Event<T>) -> Self {
+        event.handle()
+    }
+}
+
+impl<T: Clone + Send> From<&Event<T>> for EventHandle<T> {
+    fn from(event: &Event<T>) -> Self {
+        event.handle()
+    }
+}
+
+impl<T: Clone + Send> From<&mut Event<T>> for EventHandle<T> {
+    fn from(event: &mut Event<T>) -> Self {
+        event.handle()
+    }
+}
+
+impl<T: Clone + Send> From<&Self> for EventHandle<T> {
+    fn from(event_handle: &Self) -> Self {
+        event_handle.clone()
+    }
+}
+
+impl<T: Clone + Send> AsRef<EventHandle<T>> for EventHandle<T> {
+    fn as_ref(&self) -> &EventHandle<T> {
+        self
+    }
+}
+
 impl<T: Clone + Send> PartialEq for EventHandle<T> {
     fn eq(&self, other: &Self) -> bool {
         self.inner.ptr_eq(&other.inner)
