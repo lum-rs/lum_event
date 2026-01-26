@@ -23,11 +23,11 @@ pub enum DispatchError<T> {
 }
 
 pub struct Subscriber<T: Clone + Send> {
-    pub name: String,
-    pub log_on_error: bool,
-    pub remove_on_error: bool,
-    pub callback: Callback<T>,
-    pub id: u64,
+    id: u64,
+    name: String,
+    log_on_error: bool,
+    remove_on_error: bool,
+    callback: Callback<T>,
 }
 
 impl<T: Clone + Send> Subscriber<T> {
@@ -38,13 +38,31 @@ impl<T: Clone + Send> Subscriber<T> {
         callback: Callback<T>,
     ) -> Self {
         let id = get_unique_id();
+        let name = name.into();
+
         Self {
-            name: name.into(),
+            id,
+            name,
             log_on_error,
             remove_on_error,
             callback,
-            id,
         }
+    }
+
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn log_on_error(&self) -> bool {
+        self.log_on_error
+    }
+
+    pub fn remove_on_error(&self) -> bool {
+        self.remove_on_error
     }
 
     //TODO: For closure callback, consider spawning a task to avoid blocking. Or defining a ClosureNonBlocking variant.

@@ -54,7 +54,7 @@ impl<T: Clone + Send + PartialEq> Drop for Observable<T> {
         if strong_count > 1 {
             warn!(
                 "Observable '{}' is being dropped but {} other reference(s) to its Event still exist. The Event will not be dropped. You may have a bug causing a memory leak.",
-                self.on_change.name,
+                self.on_change.name(),
                 strong_count - 1
             );
         }
