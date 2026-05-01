@@ -1,18 +1,14 @@
+use lum_boxtypes::BoxedError;
 use lum_libs::{
     dashmap::DashMap,
-    parking_lot::Mutex,
     tokio::{
         spawn,
-        sync::mpsc::{Receiver, error::TryRecvError},
-        task::JoinHandle,
-        time,
+        sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
     },
 };
-use lum_log::warn;
 use std::{
     fmt::{self, Display, Formatter},
     sync::Arc,
-    time::Duration,
 };
 use thiserror::Error;
 
@@ -20,11 +16,9 @@ use crate::event::EventHandleError;
 
 use super::{Event, event::EventHandle};
 
-struct Subscription<T: Clone + Send> {
+struct Attachment<T: Clone + Send> {
     event: EventHandle<T>,
     subscriber_id: u64,
-    receiver: Receiver<T>,
-    log: bool,
 }
 
 #[derive(Debug, Error)]
@@ -55,21 +49,37 @@ pub enum DetachError {
     },
 }
 
+#[derive(Debug, Error)]
+pub enum ForwardingError {
+    #[error("The EventRepeater is no longer alive")]
+    RepeaterDropped,
+}
+
 pub struct EventRepeater<T: Clone + Send + 'static> {
     pub event: Event<T>,
 
-    attachments: Arc<DashMap<u64, Subscription<T>>>,
-    receive_dispatch_loop: Mutex<Option<JoinHandle<()>>>,
+    attachments: Arc<DashMap<u64, Attachment<T>>>,
+    alive: Arc<()>,
+    event_queue_sender: UnboundedSender<T>,
 }
 
 impl<T: Clone + Send + 'static> EventRepeater<T> {
     pub fn new(name: impl Into<String>) -> Self {
         let event = Event::new(name);
+        let event_handle = event.handle();
+
+        let attachments = Arc::new(DashMap::new());
+        let alive = Arc::new(());
+        let (event_queue_sender, event_queue_receiver) = unbounded_channel::<T>();
+        spawn(async move {
+            run_forward_loop(event_handle, event_queue_receiver).await;
+        });
 
         Self {
             event,
-            attachments: Arc::new(DashMap::new()),
-            receive_dispatch_loop: Mutex::new(None),
+            attachments,
+            event_queue_sender,
+            alive,
         }
     }
 
@@ -78,42 +88,62 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
     }
 
     pub fn attachment_count(&self) -> usize {
+        self.cleanup_dropped_attachments();
         self.attachments.len()
     }
 
     pub fn attach(
         &self,
         event_handle: impl Into<EventHandle<T>>,
-        buffer: usize,
-        log: bool,
+        _buffer: usize,
     ) -> Result<(), AttachError> {
         let event_handle = event_handle.into();
 
-        event_handle.try_with_event(|event_inner| {
-            let event_id = event_inner.id();
+        event_handle.try_with(|event| {
+            let event_id = event.id();
 
             if self.attachments.contains_key(&event_id) {
                 let event_repeater_name = self.name().to_string();
+                let event_name = event.name().to_string();
 
                 return Err(AttachError::AlreadyAttached {
                     event_repeater_name,
-                    event_name: event_inner.name().to_string(),
+                    event_name,
                 });
             }
 
-            let (subscriber_id, receiver) =
-                event_inner.subscribe_channel(self.event.name(), buffer, log, true);
+            // A sync closure is used instead of an async one to avoid the `T: Sync`
+            // constraint that `PinnedBoxedFutureResult` would impose on the captured
+            // future. The closure simply enqueues data into the fan-in channel; the
+            // forward loop task wakes up and awaits the dispatch — zero polling.
+            //
+            // The `alive` weak reference provides synchronous drop detection: once
+            // EventRepeater is dropped, `alive` is gone, and the next source dispatch
+            // returns an error here, triggering auto-removal (remove_on_error: true).
+            let event_repeater_name = self.event.name();
+            let event_queue_sender = self.event_queue_sender.clone();
+            let alive = Arc::downgrade(&self.alive);
+            let subscriber_id = event.subscribe_closure(
+                event_repeater_name,
+                move |data: T| -> Result<(), BoxedError> {
+                    if alive.upgrade().is_none() {
+                        return Err(Box::new(ForwardingError::RepeaterDropped));
+                    }
 
-            let attachment = Subscription {
+                    event_queue_sender
+                        .send(data)
+                        .map_err(|_| Box::new(ForwardingError::RepeaterDropped) as BoxedError)
+                },
+                false,
+                true,
+            );
+
+            let attachment = Attachment {
                 event: event_handle.clone(),
                 subscriber_id,
-                receiver,
-                log,
             };
 
             self.attachments.insert(event_id, attachment);
-            self.trigger_receive_dispatch_loop();
-
             Ok(())
         })?
     }
@@ -121,171 +151,56 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
     pub fn detach(&self, event_handle: impl Into<EventHandle<T>>) -> Result<(), DetachError> {
         let event_handle = event_handle.into();
 
-        event_handle.try_with_event(|event_inner| {
+        event_handle.try_with(|event| {
             let event_repeater_name = self.name().to_string();
-            let event_id = event_inner.id();
-            let event_name = event_inner.name();
             let attachments = self.attachments.clone();
-            let result = do_detach(
-                &event_repeater_name,
-                event_id,
-                Some(event_name),
-                attachments,
-            );
 
-            if result.is_ok() {
-                self.trigger_receive_dispatch_loop();
+            let attachment = match attachments.remove(&event.id()) {
+                Some((_, attachment)) => attachment,
+                None => {
+                    let event_name = event.name().to_string();
+                    return Err(DetachError::NotAttached {
+                        event_repeater_name,
+                        event_name,
+                    });
+                }
+            };
+
+            if attachment.event.is_dropped() {
+                return Ok(());
             }
 
-            result
+            let _ = attachment
+                .event
+                .try_with(|event| event.unsubscribe(attachment.subscriber_id));
+
+            Ok(())
         })?
     }
 
-    pub fn close(self) {
-        {
-            let mut receive_loop = self.receive_dispatch_loop.lock();
-            if let Some(handle) = receive_loop.as_ref() {
-                handle.abort();
-                *receive_loop = None;
-            }
-        }
-
-        let ids_to_remove = self
+    fn cleanup_dropped_attachments(&self) {
+        let dropped: Vec<u64> = self
             .attachments
             .iter()
+            .filter(|entry| entry.value().event.is_dropped())
             .map(|entry| *entry.key())
-            .collect::<Vec<_>>();
+            .collect();
 
-        for id in ids_to_remove.into_iter() {
-            let _ = do_detach(self.event.name(), id, None, self.attachments.clone());
-        }
-    }
-
-    // Make sure loop is stopped if no attachments, make sure loop is running otherwise
-    fn trigger_receive_dispatch_loop(&self) {
-        let mut receive_loop = self.receive_dispatch_loop.lock();
-
-        if self.attachments.is_empty()
-            && let Some(handle) = receive_loop.as_ref()
-        {
-            handle.abort();
-            *receive_loop = None;
-        } else if receive_loop.is_none() || receive_loop.as_ref().unwrap().is_finished() {
-            let self_event_handle = self.event.handle();
-            let attachments = self.attachments.clone();
-
-            let handle = spawn(async move {
-                run_receive_dispatch_loop(self_event_handle, attachments).await;
-            });
-
-            *receive_loop = Some(handle);
+        for id in dropped {
+            self.attachments.remove(&id);
         }
     }
 }
 
-async fn run_receive_dispatch_loop<T: Clone + Send + 'static>(
-    self_event: EventHandle<T>,
-    attachments: Arc<DashMap<u64, Subscription<T>>>,
+async fn run_forward_loop<T: Clone + Send + 'static>(
+    event_handle: EventHandle<T>,
+    mut event_queue_receiver: UnboundedReceiver<T>,
 ) {
-    let event_repeater_name = match self_event.name() {
-        Ok(name) => name,
-        Err(_) => return, // Event dropped, stop the loop
-    };
-
-    loop {
-        let mut data_to_dispatch = Vec::new();
-        let mut attachments_to_remove = Vec::new();
-        for mut entry in attachments.iter_mut() {
-            let event_id = *entry.key();
-            let attachment = entry.value_mut();
-
-            // Drain all available messages from the attachment's channel
-            // We hold back dispatching until we've checked all attachments to avoid
-            // holding DashMap's lock across an await point
-            loop {
-                match attachment.receiver.try_recv() {
-                    Ok(data) => data_to_dispatch.push(data),
-                    Err(TryRecvError::Empty) => break,
-                    Err(TryRecvError::Disconnected) => {
-                        if attachment.log {
-                            warn!(
-                                "EventRepeater {}'s attachment {} closed its channel. It will be unregistered.",
-                                event_repeater_name, attachment.subscriber_id
-                            );
-                        }
-                        attachments_to_remove.push(event_id);
-                        break;
-                    }
-                };
-            }
-        }
-
-        for id in attachments_to_remove.into_iter() {
-            let _ = do_detach(&event_repeater_name, id, None, attachments.clone());
-        }
-
-        let should_yield = data_to_dispatch.is_empty();
-        for data in data_to_dispatch.into_iter() {
-            // If our self_event is dropped, we can stop here
-            if self_event.dispatch(data).await.is_err() {
-                return;
-            }
-        }
-
-        if attachments.is_empty() {
-            break;
-        }
-
-        //We use sleep instead of yield_now() to avoid spinning when there's no data,
-        // giving other tasks more time to run
-        if should_yield {
-            time::sleep(Duration::from_millis(1)).await;
+    while let Some(data) = event_queue_receiver.recv().await {
+        if event_handle.dispatch(data).await.is_err() {
+            return;
         }
     }
-}
-
-fn do_detach<T: Clone + Send + 'static>(
-    event_repeater_name: &str,
-    event_id: u64,
-    event_name: Option<&str>,
-    attachments: Arc<DashMap<u64, Subscription<T>>>,
-) -> Result<(), DetachError> {
-    let event_repeater_name = event_repeater_name.to_string();
-
-    let attachment = match attachments.remove(&event_id) {
-        Some((_, attachment)) => attachment,
-        None => {
-            let event_name = event_name
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| event_id.to_string());
-
-            return Err(DetachError::NotAttached {
-                event_repeater_name,
-                event_name,
-            });
-        }
-    };
-
-    let result = attachment.event.try_with_event(|event_inner| {
-        let removed = event_inner.unsubscribe(attachment.subscriber_id);
-        if !removed && attachment.log {
-        let event_name = event_inner.name();
-
-        warn!(
-                "EventRepeater {} tried to detach from event {} but the EventRepeater's attachment was not registered as a subscriber on the Event anymore. It must have been removed already some other way.",
-                event_repeater_name, event_name
-            );
-        }
-    });
-
-    if result.is_err() && attachment.log {
-        warn!(
-            "EventRepeater {} tried to detach from unknown event with ID {} but the event has already been dropped. The attachment will just be removed from the EventRepeater's list of attachments.",
-            event_repeater_name, event_id
-        );
-    }
-
-    Ok(()) //attachment is dropped here, closing the receiver channel
 }
 
 impl<T: Clone + Send + 'static> PartialEq for EventRepeater<T> {
@@ -305,15 +220,6 @@ impl<T: Clone + Send + 'static> Eq for EventRepeater<T> {}
 impl<T: Clone + Send + 'static> AsRef<Event<T>> for EventRepeater<T> {
     fn as_ref(&self) -> &Event<T> {
         &self.event
-    }
-}
-
-//TODO: Use async Drop when Rust supports it
-impl<T: Clone + Send + 'static> Drop for EventRepeater<T> {
-    fn drop(&mut self) {
-        if let Some(handle) = self.receive_dispatch_loop.get_mut().take() {
-            handle.abort();
-        }
     }
 }
 
@@ -338,25 +244,16 @@ impl<T: Clone + Send + 'static> Display for EventRepeater<T> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
-    use lum_libs::tokio::{self};
+    use lum_libs::tokio::{self, time::sleep};
 
     const REPEATER_NAME: &str = "test_repeater";
     const EVENT_NAME: &str = "test_event";
     const RECEIVER_NAME: &str = "test_receiver";
     const BUFFER_SIZE: usize = 10;
-    const LOG_ON_ERROR: bool = true;
     const DATA: u16 = 3120;
-
-    fn get_receive_loop_status<T: Clone + Send + 'static>(
-        event_repeater: &EventRepeater<T>,
-    ) -> bool {
-        let lock = event_repeater.receive_dispatch_loop.lock();
-        match lock.as_ref() {
-            Some(handle) => !handle.is_finished(),
-            None => false,
-        }
-    }
 
     #[tokio::test]
     async fn display() {
@@ -370,7 +267,7 @@ mod tests {
         let event1 = Event::new(EVENT_NAME);
         let event1_handle = event1.handle();
         event_repeater
-            .attach(event1_handle.clone(), BUFFER_SIZE, LOG_ON_ERROR)
+            .attach(event1_handle.clone(), BUFFER_SIZE)
             .unwrap();
         let display_str = event_repeater.to_string();
         assert_eq!(
@@ -381,7 +278,7 @@ mod tests {
         let event2 = Event::new(EVENT_NAME);
         let event2_handle = event2.handle();
         event_repeater
-            .attach(event2_handle.clone(), BUFFER_SIZE, LOG_ON_ERROR)
+            .attach(event2_handle.clone(), BUFFER_SIZE)
             .unwrap();
         let display_str = event_repeater.to_string();
         assert_eq!(
@@ -405,29 +302,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn receive_loop_management() {
+    async fn attachment_lifecycle() {
         let event_repeater = EventRepeater::<()>::new(REPEATER_NAME);
-        assert!(!get_receive_loop_status(&event_repeater));
+        assert_eq!(event_repeater.attachment_count(), 0);
 
         let event1 = Event::new(EVENT_NAME);
         let event1_handle = event1.handle();
         event_repeater
-            .attach(event1_handle.clone(), BUFFER_SIZE, LOG_ON_ERROR)
+            .attach(event1_handle.clone(), BUFFER_SIZE)
             .unwrap();
-        assert!(get_receive_loop_status(&event_repeater));
+        assert_eq!(event_repeater.attachment_count(), 1);
 
         let event2 = Event::new(EVENT_NAME);
         let event2_handle = event2.handle();
         event_repeater
-            .attach(event2_handle.clone(), BUFFER_SIZE, LOG_ON_ERROR)
+            .attach(event2_handle.clone(), BUFFER_SIZE)
             .unwrap();
-        assert!(get_receive_loop_status(&event_repeater));
+        assert_eq!(event_repeater.attachment_count(), 2);
 
         event_repeater.detach(event1_handle).unwrap();
-        assert!(get_receive_loop_status(&event_repeater));
+        assert_eq!(event_repeater.attachment_count(), 1);
 
         event_repeater.detach(event2_handle).unwrap();
-        assert!(!get_receive_loop_status(&event_repeater));
+        assert_eq!(event_repeater.attachment_count(), 0);
     }
 
     #[tokio::test]
@@ -436,7 +333,7 @@ mod tests {
         let event1 = Event::new(EVENT_NAME);
         let event1_handle = event1.handle();
         event_repeater
-            .attach(event1_handle.clone(), BUFFER_SIZE, LOG_ON_ERROR)
+            .attach(event1_handle.clone(), BUFFER_SIZE)
             .unwrap();
 
         assert_eq!(event_repeater.attachment_count(), 1);
@@ -453,29 +350,11 @@ mod tests {
         let event1 = Event::new(EVENT_NAME);
         let event1_handle = event1.handle();
 
-        event_repeater
-            .attach(event1_handle, BUFFER_SIZE, LOG_ON_ERROR)
-            .unwrap();
-
+        event_repeater.attach(event1_handle, BUFFER_SIZE).unwrap();
         drop(event1);
-        time::sleep(Duration::from_millis(10)).await; //Give some time for the receive loop to process the closed channel
-        assert_eq!(event_repeater.attachment_count(), 0);
-        assert!(!get_receive_loop_status(&event_repeater));
-    }
 
-    #[tokio::test]
-    async fn remove_from_events_on_close() {
-        let event_repeater = EventRepeater::<()>::new(REPEATER_NAME);
-        let event1 = Event::new(EVENT_NAME);
-        let event1_handle = event1.handle();
-
-        event_repeater
-            .attach(event1_handle, BUFFER_SIZE, LOG_ON_ERROR)
-            .unwrap();
-        assert_eq!(event1.subscriber_count(), 1);
-
-        event_repeater.close();
-        assert_eq!(event1.subscriber_count(), 0);
+        let attachment_count = event_repeater.attachment_count();
+        assert_eq!(attachment_count, 0);
     }
 
     #[tokio::test]
@@ -484,19 +363,30 @@ mod tests {
         let event1 = Event::new(EVENT_NAME);
         let event1_handle = event1.handle();
 
-        event_repeater
-            .attach(event1_handle, BUFFER_SIZE, LOG_ON_ERROR)
-            .unwrap();
+        event_repeater.attach(event1_handle, BUFFER_SIZE).unwrap();
         assert_eq!(event1.subscriber_count(), 1);
 
         drop(event_repeater);
-        assert_eq!(event1.subscriber_count(), 1); // event did not check for closed channels yet
+        assert_eq!(event1.subscriber_count(), 1); // forwarding closure not yet removed
 
-        time::sleep(Duration::from_millis(10)).await; //Give some time for the receive loop to be aborted
-
-        let result = event1.dispatch(()).await; // trigger the event to make the repeater notice the closed channel
+        let result = event1.dispatch(()).await; // triggers forwarding closure, which errors and self-removes
         assert!(result.is_err());
         assert_eq!(event1.subscriber_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn stop_forward_loop_on_drop() {
+        let (event_queue_sender, event_queue_receiver) = unbounded_channel::<()>();
+        let event = Event::new("stop_test");
+        let event_handle = event.handle();
+        let task_handle = spawn(async move {
+            run_forward_loop(event_handle, event_queue_receiver).await;
+        });
+
+        drop(event_queue_sender); // Closes the channel, which will cause the forward loop to exit
+        sleep(Duration::from_millis(50)).await;
+
+        assert!(task_handle.is_finished());
     }
 
     #[tokio::test]
@@ -505,13 +395,11 @@ mod tests {
         let event1 = Event::new(EVENT_NAME);
         let event1_handle = event1.handle();
 
-        event_repeater
-            .attach(event1_handle, BUFFER_SIZE, LOG_ON_ERROR)
-            .unwrap();
+        event_repeater.attach(event1_handle, BUFFER_SIZE).unwrap();
 
         let mut receiver = event_repeater
             .event
-            .subscribe_channel(RECEIVER_NAME, BUFFER_SIZE, LOG_ON_ERROR, true)
+            .subscribe_channel(RECEIVER_NAME, BUFFER_SIZE, false, true)
             .1;
 
         event1.dispatch(DATA).await.unwrap();

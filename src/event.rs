@@ -287,7 +287,7 @@ impl<T: Clone + Send> EventHandle<T> {
         self.inner.strong_count() == 0
     }
 
-    pub fn try_with_event<R>(
+    pub fn try_with<R>(
         &self,
         func: impl FnOnce(&EventInner<T>) -> R,
     ) -> Result<R, EventHandleError> {
@@ -297,7 +297,7 @@ impl<T: Clone + Send> EventHandle<T> {
         Ok(result)
     }
 
-    pub async fn try_with_event_async<R>(
+    pub async fn try_with_async<R>(
         &self,
         func: impl AsyncFnOnce(&EventInner<T>) -> R,
     ) -> Result<R, EventHandleError> {
