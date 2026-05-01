@@ -51,8 +51,8 @@ pub enum DetachError {
 
 #[derive(Debug, Error)]
 pub enum ForwardingError {
-    #[error("The EventRepeater is no longer alive")]
-    RepeaterDropped,
+    #[error("The EventRepeater {event_repeater_name} is no longer alive")]
+    RepeaterDropped { event_repeater_name: String },
 }
 
 pub struct EventRepeater<T: Clone + Send + 'static> {
@@ -92,18 +92,14 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
         self.attachments.len()
     }
 
-    pub fn attach(
-        &self,
-        event_handle: impl Into<EventHandle<T>>,
-        _buffer: usize,
-    ) -> Result<(), AttachError> {
+    pub fn attach(&self, event_handle: impl Into<EventHandle<T>>) -> Result<(), AttachError> {
         let event_handle = event_handle.into();
 
         event_handle.try_with(|event| {
             let event_id = event.id();
+            let event_repeater_name = self.name().to_string();
 
             if self.attachments.contains_key(&event_id) {
-                let event_repeater_name = self.name().to_string();
                 let event_name = event.name().to_string();
 
                 return Err(AttachError::AlreadyAttached {
@@ -112,27 +108,22 @@ impl<T: Clone + Send + 'static> EventRepeater<T> {
                 });
             }
 
-            // A sync closure is used instead of an async one to avoid the `T: Sync`
-            // constraint that `PinnedBoxedFutureResult` would impose on the captured
-            // future. The closure simply enqueues data into the fan-in channel; the
-            // forward loop task wakes up and awaits the dispatch — zero polling.
-            //
-            // The `alive` weak reference provides synchronous drop detection: once
-            // EventRepeater is dropped, `alive` is gone, and the next source dispatch
-            // returns an error here, triggering auto-removal (remove_on_error: true).
-            let event_repeater_name = self.event.name();
-            let event_queue_sender = self.event_queue_sender.clone();
             let alive = Arc::downgrade(&self.alive);
+            let event_queue_sender = self.event_queue_sender.clone();
             let subscriber_id = event.subscribe_closure(
-                event_repeater_name,
+                event_repeater_name.clone(),
                 move |data: T| -> Result<(), BoxedError> {
                     if alive.upgrade().is_none() {
-                        return Err(Box::new(ForwardingError::RepeaterDropped));
+                        return Err(Box::new(ForwardingError::RepeaterDropped {
+                            event_repeater_name: event_repeater_name.clone(),
+                        }));
                     }
 
-                    event_queue_sender
-                        .send(data)
-                        .map_err(|_| Box::new(ForwardingError::RepeaterDropped) as BoxedError)
+                    event_queue_sender.send(data).map_err(|_| {
+                        Box::new(ForwardingError::RepeaterDropped {
+                            event_repeater_name: event_repeater_name.clone(),
+                        }) as BoxedError
+                    })
                 },
                 false,
                 true,
@@ -252,7 +243,6 @@ mod tests {
     const REPEATER_NAME: &str = "test_repeater";
     const EVENT_NAME: &str = "test_event";
     const RECEIVER_NAME: &str = "test_receiver";
-    const BUFFER_SIZE: usize = 10;
     const DATA: u16 = 3120;
 
     #[tokio::test]
@@ -266,9 +256,7 @@ mod tests {
 
         let event1 = Event::new(EVENT_NAME);
         let event1_handle = event1.handle();
-        event_repeater
-            .attach(event1_handle.clone(), BUFFER_SIZE)
-            .unwrap();
+        event_repeater.attach(event1_handle.clone()).unwrap();
         let display_str = event_repeater.to_string();
         assert_eq!(
             display_str,
@@ -277,9 +265,7 @@ mod tests {
 
         let event2 = Event::new(EVENT_NAME);
         let event2_handle = event2.handle();
-        event_repeater
-            .attach(event2_handle.clone(), BUFFER_SIZE)
-            .unwrap();
+        event_repeater.attach(event2_handle.clone()).unwrap();
         let display_str = event_repeater.to_string();
         assert_eq!(
             display_str,
@@ -308,16 +294,12 @@ mod tests {
 
         let event1 = Event::new(EVENT_NAME);
         let event1_handle = event1.handle();
-        event_repeater
-            .attach(event1_handle.clone(), BUFFER_SIZE)
-            .unwrap();
+        event_repeater.attach(event1_handle.clone()).unwrap();
         assert_eq!(event_repeater.attachment_count(), 1);
 
         let event2 = Event::new(EVENT_NAME);
         let event2_handle = event2.handle();
-        event_repeater
-            .attach(event2_handle.clone(), BUFFER_SIZE)
-            .unwrap();
+        event_repeater.attach(event2_handle.clone()).unwrap();
         assert_eq!(event_repeater.attachment_count(), 2);
 
         event_repeater.detach(event1_handle).unwrap();
@@ -332,9 +314,7 @@ mod tests {
         let event_repeater = EventRepeater::<()>::new(REPEATER_NAME);
         let event1 = Event::new(EVENT_NAME);
         let event1_handle = event1.handle();
-        event_repeater
-            .attach(event1_handle.clone(), BUFFER_SIZE)
-            .unwrap();
+        event_repeater.attach(event1_handle.clone()).unwrap();
 
         assert_eq!(event_repeater.attachment_count(), 1);
         assert_eq!(event1.subscriber_count(), 1);
@@ -350,7 +330,7 @@ mod tests {
         let event1 = Event::new(EVENT_NAME);
         let event1_handle = event1.handle();
 
-        event_repeater.attach(event1_handle, BUFFER_SIZE).unwrap();
+        event_repeater.attach(event1_handle).unwrap();
         drop(event1);
 
         let attachment_count = event_repeater.attachment_count();
@@ -363,7 +343,7 @@ mod tests {
         let event1 = Event::new(EVENT_NAME);
         let event1_handle = event1.handle();
 
-        event_repeater.attach(event1_handle, BUFFER_SIZE).unwrap();
+        event_repeater.attach(event1_handle).unwrap();
         assert_eq!(event1.subscriber_count(), 1);
 
         drop(event_repeater);
@@ -395,11 +375,11 @@ mod tests {
         let event1 = Event::new(EVENT_NAME);
         let event1_handle = event1.handle();
 
-        event_repeater.attach(event1_handle, BUFFER_SIZE).unwrap();
+        event_repeater.attach(event1_handle).unwrap();
 
         let mut receiver = event_repeater
             .event
-            .subscribe_channel(RECEIVER_NAME, BUFFER_SIZE, false, true)
+            .subscribe_channel(RECEIVER_NAME, 1, false, true)
             .1;
 
         event1.dispatch(DATA).await.unwrap();
