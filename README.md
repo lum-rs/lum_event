@@ -1,4 +1,10 @@
-# lum_event
+# ARCHIVED
+
+Moved to https://github.com/lum-rs/lum
+
+---
+
+## lum_event
 
 lum framework's event library
 
